@@ -26,7 +26,7 @@
 
 | Method | Path | Input | Description | Documentation |
 | --- | --- | --- | --- | --- |
-| `GET` | `/tinyUrl` | `url` query parameter | Generates a base-26 short code for a URL. | [Guide](apis/url_shortening.md) |
+| `GET` | `/tinyUrl` | `url` query parameter | Generates a base-62 short code for a URL. | [Guide](apis/url_shortening.md) |
 | `GET` | `/message` | None | Returns a fixed string. | [Guide](apis/message.md) |
 | `GET` | `/health` | None | Returns the application's health status. | [Guide](apis/health.md) |
 
@@ -35,8 +35,8 @@
 The FastAPI application is defined in `main.py`. Each API is implemented in a
 separate module under `routers/` and registered with `app.include_router()`.
 Python's standard-library `uuid4()` function supplies a unique integer, which
-the URL shortening router converts to lowercase base 26. FastAPI serializes
-returned dictionaries as JSON.
+the URL shortening router converts to base 62. FastAPI serializes returned
+dictionaries as JSON.
 
 ## Interactive API documentation
 
