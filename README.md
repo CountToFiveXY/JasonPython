@@ -1,13 +1,12 @@
-# Message API
+# Message APIs
 
-A small FastAPI service that accepts text, generates a UUID, appends the UUID
-to the text, and returns the result as JSON.
+A small FastAPI project containing three endpoints: a UUID message generator,
+a simple message response, and a health check.
 
-Example response:
+All endpoints run from one application and are organized with `APIRouter`.
 
-```json
-{"message": "hello-550e8400-e29b-41d4-a716-446655440000"}
-```
+See [How to call the API](docs/how_to_call_api.md) for request and response
+examples.
 
 ## Documentation
 

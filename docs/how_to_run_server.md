@@ -21,7 +21,9 @@ changes. Do not use it for a production deployment.
 
 On the Mac running the server:
 
-- API: <http://127.0.0.1:8080/?text=hello>
+- UUID API: <http://127.0.0.1:8080/?text=hello>
+- Message API: <http://127.0.0.1:8080/message>
+- Health API: <http://127.0.0.1:8080/health>
 - Interactive documentation: <http://127.0.0.1:8080/docs>
 
 To call the server from another device on the same local network, find the
@@ -35,6 +37,8 @@ Replace `YOUR_MAC_IP` in these addresses:
 
 ```text
 http://YOUR_MAC_IP:8080/?text=hello
+http://YOUR_MAC_IP:8080/message
+http://YOUR_MAC_IP:8080/health
 http://YOUR_MAC_IP:8080/docs
 ```
 

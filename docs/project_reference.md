@@ -7,23 +7,31 @@
 ├── main.py
 ├── requirements.txt
 ├── README.md
+├── routers/
+│   ├── __init__.py
+│   ├── uuid_messages.py
+│   ├── messages.py
+│   └── health.py
 └── docs/
     ├── how_to_run_server.md
     ├── how_to_call_api.md
     └── project_reference.md
 ```
 
-## Endpoint
+## Endpoints
 
 | Method | Path | Input | Description |
 | --- | --- | --- | --- |
 | `GET` | `/` | `text` query parameter | Appends a new UUID to the supplied text. |
+| `GET` | `/message` | None | Returns a fixed string. |
+| `GET` | `/health` | None | Returns the application's health status. |
 
 ## Implementation
 
-The application is defined in `main.py`. Python's standard-library `uuid4()`
-function generates the UUID, and FastAPI serializes the returned dictionary as
-JSON.
+The FastAPI application is defined in `main.py`. Each API is implemented in a
+separate module under `routers/` and registered with `app.include_router()`.
+Python's standard-library `uuid4()` function generates UUID values, and
+FastAPI serializes returned dictionaries as JSON.
 
 ## Interactive API documentation
 

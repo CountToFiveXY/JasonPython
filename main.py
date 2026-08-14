@@ -1,14 +1,10 @@
-from uuid import uuid4
-
 from fastapi import FastAPI
 
+from routers import health, messages, uuid_messages
 
-app = FastAPI(title="Message API")
 
+app = FastAPI(title="Message APIs")
 
-@app.get("/")
-def extend_text(text: str) -> dict[str, str]:
-    identifier = str(uuid4())
-    extended_text = f"{text}-{identifier}"
-    print(extended_text)
-    return {"message": extended_text}
+app.include_router(uuid_messages.router)
+app.include_router(messages.router)
+app.include_router(health.router)
