@@ -9,29 +9,34 @@
 ├── README.md
 ├── routers/
 │   ├── __init__.py
-│   ├── uuid_messages.py
+│   ├── url_shortening.py
 │   ├── messages.py
 │   └── health.py
 └── docs/
     ├── how_to_run_server.md
     ├── how_to_call_api.md
-    └── project_reference.md
+    ├── project_reference.md
+    └── apis/
+        ├── url_shortening.md
+        ├── message.md
+        └── health.md
 ```
 
 ## Endpoints
 
-| Method | Path | Input | Description |
-| --- | --- | --- | --- |
-| `GET` | `/` | `text` query parameter | Appends a new UUID to the supplied text. |
-| `GET` | `/message` | None | Returns a fixed string. |
-| `GET` | `/health` | None | Returns the application's health status. |
+| Method | Path | Input | Description | Documentation |
+| --- | --- | --- | --- | --- |
+| `GET` | `/tinyUrl` | `url` query parameter | Generates a base-26 short code for a URL. | [Guide](apis/url_shortening.md) |
+| `GET` | `/message` | None | Returns a fixed string. | [Guide](apis/message.md) |
+| `GET` | `/health` | None | Returns the application's health status. | [Guide](apis/health.md) |
 
 ## Implementation
 
 The FastAPI application is defined in `main.py`. Each API is implemented in a
 separate module under `routers/` and registered with `app.include_router()`.
-Python's standard-library `uuid4()` function generates UUID values, and
-FastAPI serializes returned dictionaries as JSON.
+Python's standard-library `uuid4()` function supplies a unique integer, which
+the URL shortening router converts to lowercase base 26. FastAPI serializes
+returned dictionaries as JSON.
 
 ## Interactive API documentation
 

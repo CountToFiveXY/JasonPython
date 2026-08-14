@@ -1,6 +1,6 @@
 # Message APIs
 
-A small FastAPI project containing three endpoints: a UUID message generator,
+A small FastAPI project containing three endpoints: a URL short-code generator,
 a simple message response, and a health check.
 
 All endpoints run from one application and are organized with `APIRouter`.
