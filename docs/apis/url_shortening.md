@@ -1,7 +1,7 @@
 # URL Shortening API
 
-Generates a base-62 short code for a URL. Every generated value uses the `go/`
-prefix.
+Generates an eight-character base-62 short code for a URL. Every generated
+value uses the `go/` prefix and has the format `go/XXXXXXXX`.
 
 ## Request
 
@@ -36,13 +36,14 @@ print(response.json())
 ```json
 {
   "original_url": "https://example.com/a/long/path",
-  "short_code": "go/3FzaP09xY"
+  "short_code": "go/3FzaP09x"
 }
 ```
 
 The endpoint generates a UUID and encodes its integer value using base 62.
-Each request generates a different code. A missing `url` parameter
-produces a `422 Unprocessable Entity` response.
+It limits the value to the eight-character base-62 range and pads shorter
+results with leading zeroes. A missing `url` parameter produces a `422
+Unprocessable Entity` response.
 
 ## How base-62 encoding works
 
@@ -66,11 +67,17 @@ For example, encoding the number `3844` works as follows:
 | `62 ÷ 62` | 1 | 0 | `0` |
 | `1 ÷ 62` | 0 | 1 | `1` |
 
-Reading the characters in reverse calculation order produces `100`. The API
-then adds the prefix, resulting in `go/100`.
+Reading the characters in reverse calculation order produces `100`. For an
+eight-character code, the API pads it to `00000100` and then adds the prefix,
+resulting in `go/00000100`.
 
 In the implementation, `divmod(number, 62)` returns the quotient and remainder
 in one operation.
+
+Eight base-62 characters provide `62⁸`, or `218,340,105,584,896`, possible
+codes. Collisions are still possible because the code is generated randomly.
+A complete URL shortener should enforce a unique database constraint and retry
+generation when a duplicate code occurs.
 
 The endpoint currently generates codes only. Resolving a code back to its
 original URL requires storing the mapping in a database.

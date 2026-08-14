@@ -1,7 +1,7 @@
-# Message APIs
+# Utility APIs
 
 A small FastAPI project containing three endpoints: a URL short-code generator,
-a simple message response, and a health check.
+an image response, and a health check.
 
 All endpoints run from one application and are organized with `APIRouter`.
 

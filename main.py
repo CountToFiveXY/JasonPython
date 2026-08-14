@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from routers import health, messages, url_shortening
 
 
-app = FastAPI(title="Message APIs")
+app = FastAPI(title="Utility APIs")
 
 app.include_router(url_shortening.router)
 app.include_router(messages.router)

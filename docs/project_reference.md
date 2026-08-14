@@ -7,6 +7,8 @@
 ├── main.py
 ├── requirements.txt
 ├── README.md
+├── assets/
+│   └── metroidzm_map.jpg
 ├── routers/
 │   ├── __init__.py
 │   ├── url_shortening.py
@@ -27,7 +29,7 @@
 | Method | Path | Input | Description | Documentation |
 | --- | --- | --- | --- | --- |
 | `GET` | `/tinyUrl` | `url` query parameter | Generates a base-62 short code for a URL. | [Guide](apis/url_shortening.md) |
-| `GET` | `/message` | None | Returns a fixed string. | [Guide](apis/message.md) |
+| `GET` | `/display` | None | Returns a JPEG image. | [Guide](apis/message.md) |
 | `GET` | `/health` | None | Returns the application's health status. | [Guide](apis/health.md) |
 
 ## Implementation

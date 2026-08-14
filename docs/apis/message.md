@@ -1,23 +1,26 @@
-# Message API
+# Image API
 
-Returns a fixed message as a JSON string.
+Returns the Metroid map as a JPEG image that browsers display directly.
 
 ## Request
 
 ```text
-GET /message
+GET /display
 ```
 
 ### curl
 
 ```bash
-curl http://127.0.0.1:8080/message
+curl http://127.0.0.1:8080/display --output metroidzm_map.jpg
 ```
 
 ## Response
 
-```json
-"Hello from FastAPI!"
+The response body contains JPEG image data with this content type:
+
+```text
+Content-Type: image/jpeg
 ```
 
-This endpoint does not require any parameters.
+Open <http://127.0.0.1:8080/display> in a browser to display the image. This
+endpoint does not require any parameters.

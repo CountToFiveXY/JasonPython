@@ -22,7 +22,7 @@ changes. Do not use it for a production deployment.
 On the Mac running the server:
 
 - URL shortening API: <http://127.0.0.1:8080/tinyUrl?url=https://example.com>
-- Message API: <http://127.0.0.1:8080/message>
+- Image API: <http://127.0.0.1:8080/display>
 - Health API: <http://127.0.0.1:8080/health>
 - Interactive documentation: <http://127.0.0.1:8080/docs>
 
@@ -37,7 +37,7 @@ Replace `YOUR_MAC_IP` in these addresses:
 
 ```text
 http://YOUR_MAC_IP:8080/tinyUrl?url=https://example.com
-http://YOUR_MAC_IP:8080/message
+http://YOUR_MAC_IP:8080/display
 http://YOUR_MAC_IP:8080/health
 http://YOUR_MAC_IP:8080/docs
 ```

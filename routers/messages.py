@@ -1,10 +1,13 @@
+from pathlib import Path
+
 from fastapi import APIRouter
+from fastapi.responses import FileResponse
 
 
-router = APIRouter(prefix="/message", tags=["Messages"])
+router = APIRouter(prefix="/display", tags=["Images"])
+IMAGE_PATH = Path(__file__).resolve().parent.parent / "assets" / "metroidzm_map.jpg"
 
 
 @router.get("")
-def print_message() -> str:
-    message = "Hello from FastAPI!"
-    return message
+def display_image() -> FileResponse:
+    return FileResponse(IMAGE_PATH, media_type="image/jpeg")
