@@ -40,10 +40,21 @@ print(response.json())
 }
 ```
 
-The endpoint generates a UUID and encodes its integer value using base 62.
-It limits the value to the eight-character base-62 range and pads shorter
-results with leading zeroes. A missing `url` parameter produces a `422
-Unprocessable Entity` response.
+The endpoint generates a UUID and encodes its integer value using base 62. It
+limits the value to the eight-character base-62 range, pads shorter results
+with leading zeroes, and stores the code-to-URL mapping in Redis. A missing
+`url` parameter produces a `422 Unprocessable Entity` response.
+
+## Follow a short URL
+
+Open the returned path on the same API server:
+
+```text
+http://127.0.0.1:8080/go/3FzaP09x
+```
+
+The API reads the original URL from Redis and responds with an HTTP redirect.
+An unknown or expired code produces a `404 Not Found` response.
 
 ## How base-62 encoding works
 
@@ -76,8 +87,5 @@ in one operation.
 
 Eight base-62 characters provide `62⁸`, or `218,340,105,584,896`, possible
 codes. Collisions are still possible because the code is generated randomly.
-A complete URL shortener should enforce a unique database constraint and retry
-generation when a duplicate code occurs.
-
-The endpoint currently generates codes only. Resolving a code back to its
-original URL requires storing the mapping in a database.
+The API uses Redis's atomic `SET ... NX` behavior to store a code only when it
+does not already exist. If a collision occurs, it generates another code.

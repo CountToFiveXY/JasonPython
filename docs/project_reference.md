@@ -5,6 +5,7 @@
 ```text
 .
 ├── main.py
+├── database.py
 ├── requirements.txt
 ├── README.md
 ├── assets/
@@ -16,6 +17,7 @@
 │   └── health.py
 └── docs/
     ├── how_to_run_server.md
+    ├── how_to_run_redis.md
     ├── how_to_call_api.md
     ├── project_reference.md
     └── apis/
@@ -28,7 +30,8 @@
 
 | Method | Path | Input | Description | Documentation |
 | --- | --- | --- | --- | --- |
-| `GET` | `/tinyUrl` | `url` query parameter | Generates a base-62 short code for a URL. | [Guide](apis/url_shortening.md) |
+| `GET` | `/tinyUrl` | `url` query parameter | Stores a URL in Redis and returns a base-62 short code. | [Guide](apis/url_shortening.md) |
+| `GET` | `/go/{code}` | Path parameter | Redirects to a URL stored in Redis. | [Guide](apis/url_shortening.md) |
 | `GET` | `/display` | None | Returns a JPEG image. | [Guide](apis/message.md) |
 | `GET` | `/health` | None | Returns the application's health status. | [Guide](apis/health.md) |
 
@@ -37,8 +40,8 @@
 The FastAPI application is defined in `main.py`. Each API is implemented in a
 separate module under `routers/` and registered with `app.include_router()`.
 Python's standard-library `uuid4()` function supplies a unique integer, which
-the URL shortening router converts to base 62. FastAPI serializes returned
-dictionaries as JSON.
+the URL shortening router converts to base 62 and stores mappings in Redis.
+`database.py` manages the asynchronous Redis client for the FastAPI lifespan.
 
 ## Interactive API documentation
 

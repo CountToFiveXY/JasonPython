@@ -2,16 +2,21 @@
 
 ## Install dependencies
 
-From the project directory, run:
+From the project directory, create and activate a virtual environment:
 
 ```bash
-python3 -m pip install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
+
+Start Redis and confirm that it responds with `PONG` by following
+[How to run Redis](how_to_run_redis.md).
 
 ## Start the server
 
 ```bash
-python3 -m uvicorn main:app --reload --host 0.0.0.0 --port 8080
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8080
 ```
 
 The `--reload` option automatically restarts the development server after code

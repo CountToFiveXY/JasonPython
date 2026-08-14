@@ -17,7 +17,8 @@ curl http://127.0.0.1:8080/health
 ## Response
 
 ```json
-{"status": "OK"}
+{"status": "OK", "redis": "connected"}
 ```
 
-This endpoint does not require any parameters.
+This endpoint does not require any parameters. It returns `503 Service
+Unavailable` when FastAPI cannot reach Redis.
