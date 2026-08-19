@@ -13,5 +13,6 @@ examples.
 
 - [How to run the server](docs/how_to_run_server.md)
 - [How to run Redis](docs/how_to_run_redis.md)
+- [How to run Temporal](docs/how_to_run_temporal.md)
 - [How to call the API](docs/how_to_call_api.md)
 - [Project reference](docs/project_reference.md)

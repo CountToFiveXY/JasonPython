@@ -1,3 +1,4 @@
 fastapi
 redis
+temporalio
 uvicorn[standard]
