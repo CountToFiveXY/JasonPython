@@ -1,7 +1,8 @@
 # Utility APIs
 
-A small FastAPI project containing four APIs: URL shortening, an image response,
-a health check, and Temporal workflows.
+A small FastAPI project containing utility APIs for URL shortening, image
+responses (including a generated participant card), health checks, and Temporal
+workflows.
 
 All endpoints run from one application and are organized with `APIRouter`.
 Redis stores URL-to-code mappings so generated short URLs can be resolved.

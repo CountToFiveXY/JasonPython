@@ -18,6 +18,7 @@
 │   ├── __init__.py
 │   ├── url_shortening.py
 │   ├── messages.py
+│   ├── ranking.py
 │   ├── health.py
 │   ├── hello.py
 │   └── greeting.py
@@ -34,6 +35,7 @@
     ├── how_to_call_api.md
     ├── project_reference.md
     └── apis/
+        ├── ranking.md
         ├── url_shortening.md
         ├── message.md
         ├── health.md
@@ -47,6 +49,7 @@
 | `POST` | `/v1/shorten` | JSON `url` field | Creates a unique eight-character key for a URL. | [Guide](apis/url_shortening.md) |
 | `GET` | `/{shortKey}` | Eight-character short key | Opens the stored URL in a new browser tab, with a current-tab fallback. | [Guide](apis/url_shortening.md) |
 | `GET` | `/display` | None | Returns a JPEG image. | [Guide](apis/message.md) |
+| `POST` | `/v1/ranking` | JSON `total`, `type`, and `car` fields | Renders a ranking PNG. | [Guide](apis/ranking.md) |
 | `GET` | `/health` | None | Returns the application's health status. | [Guide](apis/health.md) |
 | `POST` | `/workflows/hello` | None | Starts `HelloWorkflow` and returns its result. | [Guide](apis/temporal_workflow.md) |
 | `POST` | `/workflows/greeting` | JSON `name` field | Starts `GreetingWorkflow` and returns its result. | [Guide](apis/temporal_workflow.md) |
