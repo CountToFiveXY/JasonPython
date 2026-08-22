@@ -10,6 +10,12 @@ Start with [How to run the server](docs/how_to_run_server.md). It covers the
 complete local environment: Redis, Temporal Server, the Temporal worker, and
 FastAPI.
 
+After installing the prerequisites, start the complete local environment with:
+
+```bash
+./scripts/run_local.sh
+```
+
 ## Documentation
 
 - [How to run the server](docs/how_to_run_server.md) — start here

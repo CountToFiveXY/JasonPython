@@ -10,6 +10,22 @@ processes:
 
 Keep each process running in its own terminal.
 
+## Quick start
+
+After completing the dependency installation below, start the complete local
+environment with one command:
+
+```bash
+./scripts/run_local.sh  # Start Redis, Temporal Server, the worker, and FastAPI.
+```
+
+The script reuses Redis or Temporal Server if either is already running. Press
+`Control+C` to stop the processes that the script started. Redis and Temporal
+instances that were already running are left untouched.
+
+The remaining sections show how to start and troubleshoot each component
+manually.
+
 ## 1. Install dependencies
 
 From the project directory, create and activate a virtual environment:
