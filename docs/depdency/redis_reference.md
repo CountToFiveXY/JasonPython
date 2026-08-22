@@ -7,6 +7,27 @@ For the complete local startup sequence, follow
 [How to run the server](../how_to_run_server.md). This page contains additional
 Redis inspection and configuration commands.
 
+## Snapshot location
+
+The local startup script stores the Redis RDB snapshot at:
+
+```text
+/Users/sword23/Workspace/redis/dump.rdb
+```
+
+The script defaults `REDIS_DATA_DIR` to a `redis` directory alongside the
+project and creates it when necessary. Override it before startup to use
+another writable directory:
+
+```bash
+export REDIS_DATA_DIR=/another/path  # Select the directory that will contain dump.rdb.
+./scripts/run_local.sh  # Start the local environment with the selected Redis directory.
+```
+
+If Redis is already running with a different data directory, stop it before
+running the script. The script will not silently change or stop a Redis instance
+that it did not start.
+
 ## Check the connection
 
 ```bash

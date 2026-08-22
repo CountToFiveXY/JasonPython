@@ -4,6 +4,7 @@ set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 python_bin="$project_dir/.venv/bin/python"
+redis_data_dir="${REDIS_DATA_DIR:-$(dirname "$project_dir")/redis}"
 redis_started=0
 temporal_pid=""
 worker_pid=""
@@ -95,16 +96,34 @@ if [[ ! -x "$python_bin" ]]; then
     exit 1
 fi
 
+if [[ ! -d "$redis_data_dir" ]] && ! mkdir -p "$redis_data_dir"; then
+    highlight_error "Could not create Redis data directory: $redis_data_dir"
+    exit 1
+fi
+
+if [[ ! -w "$redis_data_dir" ]]; then
+    highlight_error "Redis data directory must exist and be writable: $redis_data_dir"
+    exit 1
+fi
+
 cd "$project_dir"
 
 if redis-cli ping >/dev/null 2>&1; then
+    current_redis_dir="$(redis-cli --raw CONFIG GET dir | tail -n 1)"
+    if [[ "$current_redis_dir" != "$redis_data_dir" ]]; then
+        highlight_error "Redis is already using a different data directory: $current_redis_dir"
+        highlight_error "Stop Redis, then run this script again to use: $redis_data_dir"
+        exit 1
+    fi
     highlight "Redis is already running."
 else
     highlight "Starting Redis..."
-    redis-server --daemonize yes
+    redis-server --daemonize yes --dir "$redis_data_dir" --dbfilename dump.rdb
     redis_started=1
     wait_for_port 127.0.0.1 6379 Redis
 fi
+
+highlight "Redis snapshot: $redis_data_dir/dump.rdb"
 
 if nc -z 127.0.0.1 7233 >/dev/null 2>&1; then
     highlight "Temporal Server is already running."

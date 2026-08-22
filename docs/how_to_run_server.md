@@ -61,7 +61,8 @@ Leave this terminal open. The script:
 4. Starts FastAPI with automatic reload enabled.
 
 An existing Redis or Temporal Server instance is reused and will not be stopped
-by the script.
+by the script. By default, Redis saves its snapshot to the parent workspace at
+`/Users/sword23/Workspace/redis/dump.rdb`.
 
 ## Verify the application
 
@@ -106,7 +107,8 @@ foreground process open in its own terminal.
 ### Terminal 1: Redis
 
 ```bash
-redis-server --daemonize yes  # Start Redis in the background.
+export REDIS_DATA_DIR=/Users/sword23/Workspace/redis  # Select the directory for dump.rdb.
+redis-server --daemonize yes --dir "$REDIS_DATA_DIR" --dbfilename dump.rdb  # Start Redis with persistent snapshot storage.
 redis-cli ping  # Confirm Redis is running; it should return PONG.
 ```
 
