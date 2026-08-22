@@ -16,7 +16,14 @@
 │   ├── __init__.py
 │   ├── url_shortening.py
 │   ├── messages.py
-│   └── health.py
+│   ├── health.py
+│   ├── hello.py
+│   └── greeting.py
+├── temporal_service/
+│   ├── __init__.py
+│   ├── activities.py
+│   ├── workflows.py
+│   └── worker.py
 └── docs/
     ├── how_to_run_server.md
     ├── depdency/
@@ -27,7 +34,8 @@
     └── apis/
         ├── url_shortening.md
         ├── message.md
-        └── health.md
+        ├── health.md
+        └── temporal_workflow.md
 ```
 
 ## Endpoints
@@ -38,6 +46,8 @@
 | `GET` | `/go/{code}` | Path parameter | Redirects to a URL stored in Redis. | [Guide](apis/url_shortening.md) |
 | `GET` | `/display` | None | Returns a JPEG image. | [Guide](apis/message.md) |
 | `GET` | `/health` | None | Returns the application's health status. | [Guide](apis/health.md) |
+| `POST` | `/workflows/hello` | None | Starts `HelloWorkflow` and returns its result. | [Guide](apis/temporal_workflow.md) |
+| `POST` | `/workflows/greeting` | JSON `name` field | Starts `GreetingWorkflow` and returns its result. | [Guide](apis/temporal_workflow.md) |
 
 ## Implementation
 
@@ -46,6 +56,8 @@ separate module under `routers/` and registered with `app.include_router()`.
 Python's standard-library `uuid4()` function supplies a unique integer, which
 the URL shortening router converts to base 62 and stores mappings in Redis.
 `database.py` manages the asynchronous Redis client for the FastAPI lifespan.
+It also connects FastAPI to Temporal Server. `temporal_service/worker.py`
+registers the workflows and activities that process Temporal tasks.
 
 ## Interactive API documentation
 

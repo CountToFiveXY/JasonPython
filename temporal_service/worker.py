@@ -4,8 +4,8 @@ import os
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from temporal_service.activities import compose_greeting
-from temporal_service.workflows import GreetingWorkflow
+from temporal_service.activities import compose_greeting, print_hello
+from temporal_service.workflows import GreetingWorkflow, HelloWorkflow
 
 
 TEMPORAL_ADDRESS = os.getenv("TEMPORAL_ADDRESS", "127.0.0.1:7233")
@@ -21,8 +21,8 @@ async def main() -> None:
     worker = Worker(
         client,
         task_queue=TEMPORAL_TASK_QUEUE,
-        workflows=[GreetingWorkflow],
-        activities=[compose_greeting],
+        workflows=[GreetingWorkflow, HelloWorkflow],
+        activities=[compose_greeting, print_hello],
     )
     await worker.run()
 
