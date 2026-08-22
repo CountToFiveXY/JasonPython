@@ -10,7 +10,7 @@ application's Temporal configuration and components.
 ## Components
 
 - Temporal Server stores workflow event histories and creates tasks.
-- `temporal_service.worker` polls the `utility-api` task queue and executes the
+- `temporal.worker` polls the `utility-api` task queue and executes the
   registered workflows and activities.
 - FastAPI starts workflows through its Temporal client.
 

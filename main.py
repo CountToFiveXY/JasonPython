@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from database import lifespan
+from infrastructure.clients import lifespan
 from routers import greeting, health, hello, messages, url_shortening
 
 

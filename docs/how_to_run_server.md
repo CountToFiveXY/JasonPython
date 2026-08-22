@@ -123,7 +123,7 @@ temporal server start-dev  # Start Temporal Server and its local Web UI.
 
 ```bash
 source .venv/bin/activate  # Make this terminal use the project's Python environment.
-python -m temporal_service.worker  # Poll for and execute Temporal workflow tasks.
+python -m temporal.worker  # Poll for and execute Temporal workflow tasks.
 ```
 
 ### Terminal 4: FastAPI

@@ -10,7 +10,7 @@ worker_pid=""
 api_pid=""
 
 if [[ -t 1 ]]; then
-    highlight_color=$'\033[1;36m'
+    highlight_color=$'\033[1;38;5;208m'
     highlight_reset=$'\033[0m'
 else
     highlight_color=""
@@ -31,6 +31,18 @@ highlight() {
 
 highlight_error() {
     printf '%s%s%s\n' "$error_color" "$*" "$error_reset" >&2
+}
+
+highlight_link() {
+    local label="$1"
+    local url="$2"
+
+    if [[ -t 1 ]]; then
+        printf '%s%s: \033]8;;%s\033\\%s\033]8;;\033\\%s\n' \
+            "$highlight_color" "$label" "$url" "$url" "$highlight_reset"
+    else
+        printf '%s: %s\n' "$label" "$url"
+    fi
 }
 
 require_command() {
@@ -104,13 +116,14 @@ else
 fi
 
 highlight "Starting Temporal worker..."
-"$python_bin" -m temporal_service.worker &
+"$python_bin" -m temporal.worker &
 worker_pid=$!
 
 highlight "Starting FastAPI at http://127.0.0.1:8080..."
 "$python_bin" -m uvicorn main:app --reload --host 0.0.0.0 --port 8080 &
 api_pid=$!
 
-highlight "Temporal Web UI: http://127.0.0.1:8233"
+highlight_link "Temporal Web UI" "http://127.0.0.1:8233"
+highlight_link "You can now try calling APIs in -->" "http://127.0.0.1:8080/docs"
 highlight "Press Control+C to stop the processes started by this script."
 wait "$api_pid"

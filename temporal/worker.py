@@ -4,8 +4,8 @@ import os
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from temporal_service.activities import compose_greeting, print_hello
-from temporal_service.workflows import GreetingWorkflow, HelloWorkflow
+from temporal.activities import compose_greeting, print_hello
+from temporal.workflows import GreetingWorkflow, HelloWorkflow
 
 
 TEMPORAL_ADDRESS = os.getenv("TEMPORAL_ADDRESS", "127.0.0.1:7233")

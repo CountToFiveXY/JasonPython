@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 from redis.asyncio import Redis
 
-from database import get_redis
+from infrastructure.clients import get_redis
 
 
 router = APIRouter(tags=["URL Shortening"])

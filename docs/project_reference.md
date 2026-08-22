@@ -5,7 +5,9 @@
 ```text
 .
 ├── main.py
-├── database.py
+├── infrastructure/
+│   ├── __init__.py
+│   └── clients.py
 ├── requirements.txt
 ├── README.md
 ├── scripts/
@@ -19,7 +21,7 @@
 │   ├── health.py
 │   ├── hello.py
 │   └── greeting.py
-├── temporal_service/
+├── temporal/
 │   ├── __init__.py
 │   ├── activities.py
 │   ├── workflows.py
@@ -55,9 +57,10 @@ The FastAPI application is defined in `main.py`. Each API is implemented in a
 separate module under `routers/` and registered with `app.include_router()`.
 Python's standard-library `uuid4()` function supplies a unique integer, which
 the URL shortening router converts to base 62 and stores mappings in Redis.
-`database.py` manages the asynchronous Redis client for the FastAPI lifespan.
-It also connects FastAPI to Temporal Server. `temporal_service/worker.py`
-registers the workflows and activities that process Temporal tasks.
+`infrastructure/clients.py` manages the asynchronous Redis client for the FastAPI
+lifespan. It also connects FastAPI to Temporal Server.
+`temporal/worker.py` registers the workflows and activities that
+process Temporal tasks.
 
 ## Interactive API documentation
 
