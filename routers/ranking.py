@@ -3,7 +3,6 @@ from decimal import Decimal, ROUND_HALF_UP
 from enum import Enum
 from io import BytesIO
 from pathlib import Path
-import re
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -103,20 +102,6 @@ def _draw_logo(image: Image.Image) -> None:
         image.paste(logo, (23, 0), logo)
 
 
-def save_to_desktop(
-    image_bytes: bytes,
-    request: RankingRequest,
-    generated_at: datetime,
-) -> Path:
-    desktop = Path.home() / "Desktop"
-    desktop.mkdir(parents=True, exist_ok=True)
-    safe_car = re.sub(r"[^A-Za-z0-9_-]+", "-", request.car).strip("-") or "car"
-    timestamp = generated_at.strftime("%Y%m%d_%H%M%S")
-    output_path = desktop / f"{safe_car}_{request.type.value}_{timestamp}.png"
-    output_path.write_bytes(image_bytes)
-    return output_path
-
-
 def render_ranking(
     request: RankingRequest,
     *,
@@ -178,11 +163,8 @@ def render_ranking(
 def create_ranking(request: RankingRequest) -> StreamingResponse:
     generated_at = datetime.now().astimezone()
     image_bytes = render_ranking(request, generated_at=generated_at)
-    output_path = save_to_desktop(image_bytes, request, generated_at)
     return StreamingResponse(
         BytesIO(image_bytes),
         media_type="image/png",
-        headers={
-            "Content-Disposition": f'attachment; filename="{output_path.name}"'
-        },
+        headers={"Content-Disposition": 'attachment; filename="ranking.png"'},
     )

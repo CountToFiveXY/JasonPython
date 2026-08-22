@@ -47,7 +47,7 @@
 | Method | Path | Input | Description | Documentation |
 | --- | --- | --- | --- | --- |
 | `POST` | `/v1/shorten` | JSON `url` field | Creates a unique eight-character key for a URL. | [Guide](apis/url_shortening.md) |
-| `GET` | `/{shortKey}` | Eight-character short key | Opens the stored URL in a new browser tab, with a current-tab fallback. | [Guide](apis/url_shortening.md) |
+| `GET` | `/go/{shortKey}` | Eight-character short key | Opens the stored URL in a new browser tab, with a current-tab fallback. | [Guide](apis/url_shortening.md) |
 | `GET` | `/display` | None | Returns a JPEG image. | [Guide](apis/message.md) |
 | `POST` | `/v1/ranking` | JSON `total`, `type`, and `car` fields | Renders a ranking PNG. | [Guide](apis/ranking.md) |
 | `GET` | `/health` | None | Returns the application's health status. | [Guide](apis/health.md) |

@@ -37,7 +37,7 @@ class ShortenRequest(BaseModel):
 
 
 class ShortenResponse(BaseModel):
-    short_key: str = Field(serialization_alias="shortKey")
+    short_url: str = Field(serialization_alias="shortUrl")
 
 
 def generate_short_code() -> str:
@@ -101,12 +101,12 @@ async def shorten_url(
             nx=True,
         )
         if was_created:
-            return ShortenResponse(short_key=code)
+            return ShortenResponse(short_url=f"go/{code}")
 
     raise HTTPException(status_code=503, detail="Could not generate a unique code")
 
 
-@router.get("/{shortKey}", response_class=HTMLResponse)
+@router.get("/go/{shortKey}", response_class=HTMLResponse)
 async def redirect_short_url(
     short_key: ShortKey,
     redis_client: Redis = Depends(get_redis),

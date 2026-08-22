@@ -16,10 +16,8 @@
 - `type` must be `SE`, `SP`, or `CH`.
 - `car` is the name displayed in the top-right header (1–16 characters).
 
-The response body is an `image/png` attachment, so a browser downloads it. The
-server also saves a timestamped copy to the current user's `Desktop` directory.
-Its filename uses `{CAR}_{TYPE}_{YYYYMMDD_HHMMSS}.png`, for example
-`Galaxy_SE_20260823_031100.png`.
+The response body is an `image/png` attachment named `ranking.png`. The server
+returns the generated image without writing a copy to its local filesystem.
 Save the response to a specific path with curl:
 
 ```bash

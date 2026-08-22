@@ -1,7 +1,6 @@
 import unittest
 from datetime import datetime
 from io import BytesIO
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from PIL import Image
@@ -12,7 +11,6 @@ from routers.ranking import (
     RankingRequest,
     ranking_count,
     render_ranking,
-    save_to_desktop,
 )
 
 
@@ -35,24 +33,6 @@ class RankingTests(unittest.TestCase):
         image = Image.open(BytesIO(png))
         self.assertEqual(image.format, "PNG")
         self.assertEqual(image.size, (304, 506))
-
-    def test_save_to_desktop_writes_timestamped_png(self) -> None:
-        from tempfile import TemporaryDirectory
-        from unittest.mock import patch
-
-        generated_at = datetime(
-            2026, 8, 23, 3, 11, tzinfo=ZoneInfo("America/Los_Angeles")
-        )
-        request = RankingRequest(total=100, type=CardType.CH, car="Car 7")
-        with TemporaryDirectory() as temporary_home, patch(
-            "routers.ranking.Path.home", return_value=Path(temporary_home)
-        ):
-            output = save_to_desktop(b"png-data", request, generated_at)
-
-            self.assertEqual(output.read_bytes(), b"png-data")
-            self.assertEqual(output.parent.name, "Desktop")
-            self.assertEqual(output.name, "Car-7_CH_20260823_031100.png")
-
 
 if __name__ == "__main__":
     unittest.main()

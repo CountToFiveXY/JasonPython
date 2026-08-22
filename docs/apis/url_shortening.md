@@ -1,7 +1,7 @@
 # URL Shortening API
 
-Returns an eight-character random short code for a URL. The response contains
-only the code and does not include a redirect-route prefix.
+Returns a short redirect path for a URL. The path uses the format
+`go/<eight-character-code>`.
 
 ## Request
 
@@ -43,7 +43,7 @@ print(response.json())
 
 ```json
 {
-  "shortKey": "3FzaP09x"
+  "shortUrl": "go/3FzaP09x"
 }
 ```
 
@@ -56,7 +56,7 @@ Unprocessable Entity` response.
 Open the returned path on the same API server:
 
 ```text
-http://127.0.0.1:8080/3FzaP09x
+http://127.0.0.1:8080/go/3FzaP09x
 ```
 
 The code must contain exactly eight letters or digits. Validation happens
@@ -66,6 +66,10 @@ unknown or expired valid code produces `404 Not Found`.
 When the code exists, the response page attempts to open the original URL in a
 new browser tab. If the browser blocks automatic popups, it redirects the
 current tab instead and displays a clickable fallback link.
+
+Links using `127.0.0.1` are local to the server computer. To share generated
+links with other people, run this API at a publicly reachable domain or IP and
+configure JasonUI to use that public server address.
 
 ## How code generation works
 

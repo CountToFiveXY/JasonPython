@@ -39,7 +39,7 @@ class UrlShorteningTests(unittest.IsolatedAsyncioTestCase):
             request = ShortenRequest(url="https://example.com/long")
             result = await shorten_url(request, redis)
 
-        self.assertEqual(result.short_key, "Ab12Cd34")
+        self.assertEqual(result.short_url, "go/Ab12Cd34")
         self.assertEqual(
             redis.values[f"{REDIS_KEY_PREFIX}Ab12Cd34"],
             "https://example.com/long",
@@ -57,7 +57,7 @@ class UrlShorteningTests(unittest.IsolatedAsyncioTestCase):
             request = ShortenRequest(url="https://second.example.com/")
             result = await shorten_url(request, redis)
 
-        self.assertEqual(result.short_key, "Zx98Yw76")
+        self.assertEqual(result.short_url, "go/Zx98Yw76")
         self.assertEqual(
             redis.values[f"{REDIS_KEY_PREFIX}Ab12Cd34"],
             "https://first.example.com/",
