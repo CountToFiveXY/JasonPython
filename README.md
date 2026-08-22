@@ -10,10 +10,19 @@ Start with [How to run the server](docs/how_to_run_server.md). It covers the
 complete local environment: Redis, Temporal Server, the Temporal worker, and
 FastAPI.
 
-After installing the prerequisites, start the complete local environment with:
+First-time setup:
 
 ```bash
-./scripts/run_local.sh
+brew install redis temporal  # Install the local Redis and Temporal services.
+python3 -m venv .venv  # Create the project's Python environment.
+source .venv/bin/activate  # Activate the Python environment in this terminal.
+python -m pip install -r requirements.txt  # Install the Python dependencies.
+```
+
+Then start the complete local environment with:
+
+```bash
+./scripts/run_local.sh  # Start every local service required by the application.
 ```
 
 ## Documentation

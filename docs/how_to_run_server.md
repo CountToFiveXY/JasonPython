@@ -1,107 +1,77 @@
 # How to Run the Server
 
-This is the main startup guide. A complete local environment consists of four
-processes:
+Follow this guide from the project root when setting up the application for the
+first time. The local environment includes Redis, Temporal Server, a Temporal
+worker, and FastAPI.
 
-1. Redis
-2. Temporal Server
-3. The Temporal worker
-4. The FastAPI server
+## First-time setup
 
-Keep each process running in its own terminal.
+### 1. Download the project
 
-## Quick start
+Skip the clone command if you already have the project. Otherwise:
 
-After completing the dependency installation below, start the complete local
-environment with one command:
+```bash
+git clone git@github.com:CountToFiveXY/JasonPython.git  # Download the project from GitHub.
+cd JasonPython  # Enter the project root directory.
+```
+
+All remaining commands assume your terminal is in the project root.
+
+### 2. Install the system dependencies
+
+On macOS with Homebrew:
+
+```bash
+brew install redis temporal  # Install Redis and the Temporal command-line tool.
+```
+
+Confirm that Python 3 is installed:
+
+```bash
+python3 --version  # Print the installed Python version.
+```
+
+### 3. Create the Python environment
+
+Run these commands from the project root:
+
+```bash
+python3 -m venv .venv  # Create an isolated Python environment in the project.
+source .venv/bin/activate  # Make this terminal use the new Python environment.
+python -m pip install -r requirements.txt  # Install FastAPI, Redis, Temporal, and Uvicorn packages.
+```
+
+You only need to create the virtual environment once. The startup script uses
+`.venv/bin/python` directly, so you do not need to activate the environment
+again before running it.
+
+## Start the complete local environment
+
+Run one command from the project root:
 
 ```bash
 ./scripts/run_local.sh  # Start Redis, Temporal Server, the worker, and FastAPI.
 ```
 
-The script reuses Redis or Temporal Server if either is already running. Press
-`Control+C` to stop the processes that the script started. Redis and Temporal
-instances that were already running are left untouched.
+Leave this terminal open. The script:
 
-The remaining sections show how to start and troubleshoot each component
-manually.
+1. Starts Redis, unless Redis is already running.
+2. Starts Temporal Server, unless it is already running.
+3. Starts the Python Temporal worker.
+4. Starts FastAPI with automatic reload enabled.
 
-## 1. Install dependencies
+An existing Redis or Temporal Server instance is reused and will not be stopped
+by the script.
 
-From the project directory, create and activate a virtual environment:
+## Verify the application
 
-```bash
-python3 -m venv .venv  # Create an isolated Python environment for this project.
-source .venv/bin/activate  # Make this terminal use the environment's Python and packages.
-python -m pip install -r requirements.txt  # Install the project's Python dependencies.
-```
+Wait until the startup output says that FastAPI is running. Then open:
 
-Install Redis and the Temporal CLI on macOS if they are not already installed:
+- FastAPI documentation: <http://127.0.0.1:8080/docs>
+- Health endpoint: <http://127.0.0.1:8080/health>
+- Temporal Web UI: <http://127.0.0.1:8233>
 
-```bash
-brew install redis temporal  # Install the Redis server and Temporal CLI on macOS.
-```
-
-## 2. Start Redis
-
-In the first terminal:
-
-```bash
-/opt/homebrew/bin/redis-server /opt/homebrew/etc/redis.conf --daemonize yes  # Start Redis in the background using its Homebrew configuration.
-/opt/homebrew/bin/redis-cli ping  # Confirm that Redis is running; it should return PONG.
-```
-
-The second command must respond with `PONG`. See
-[Redis reference](depdency/redis_reference.md) for configuration and inspection
-commands.
-
-## 3. Start Temporal Server
-
-**In the second terminal**, start Temporal Server:
-
-```bash
-temporal server start-dev  # Start a local development Temporal Server and Web UI.
-```
-
-This starts the local Temporal service at `127.0.0.1:7233` and its Web UI at
-<http://127.0.0.1:8233>. Keep this terminal open.
-
-## 4. Start the Temporal worker
-
-**In the third terminal**, activate the project environment and start the
-Temporal worker:
-
-```bash
-source .venv/bin/activate  # Make this terminal use the project's Python environment.
-python -m temporal_service.worker  # Start the worker that executes Temporal workflows and activities.
-```
-
-The worker polls the `utility-api` task queue and executes the application's
-workflows and activities. Keep this terminal open.
-
-## 5. Start FastAPI
-
-In the fourth terminal, activate the project environment and start Uvicorn:
-
-```bash
-source .venv/bin/activate  # Make this terminal use the project's Python environment.
-python -m uvicorn main:app --reload --host 0.0.0.0 --port 8080  # Start FastAPI and reload it when source files change.
-```
-
-The `--reload` option automatically restarts the development server after code
-changes. Do not use it for a production deployment.
-
-## 6. Verify the application
-
-On the Mac running the server:
-
-- URL shortening API: <http://127.0.0.1:8080/tinyUrl?url=https://example.com>
-- Temporal workflow API: `POST http://127.0.0.1:8080/workflows/greeting`
-- Image API: <http://127.0.0.1:8080/display>
-- Health API: <http://127.0.0.1:8080/health>
-- Interactive documentation: <http://127.0.0.1:8080/docs>
-
-Run a Temporal workflow:
+Run a Temporal workflow from another terminal:
 
 ```bash
 curl -X POST http://127.0.0.1:8080/workflows/greeting \
@@ -110,41 +80,80 @@ curl -X POST http://127.0.0.1:8080/workflows/greeting \
 # Start a greeting workflow through FastAPI and wait for its result.
 ```
 
-The response includes a workflow ID. Open the
-[Temporal Web UI](http://127.0.0.1:8233) to inspect its event history. See
-[Temporal reference](depdency/temporal_reference.md) for configuration details.
+The response contains a workflow ID and greeting result. Search for the
+workflow ID in the Temporal Web UI to inspect its event history.
 
-To call the server from another device on the same local network, find the
-Mac's Wi-Fi IP address:
+Other available endpoints are documented in
+[How to call the API](how_to_call_api.md).
 
-```bash
-ipconfig getifaddr en0  # Print the Mac's Wi-Fi IP address for access from another device.
-```
+## Stop the complete local environment
 
-Replace `YOUR_MAC_IP` in these addresses:
+Press `Control+C` in the terminal running `run_local.sh`. The script stops the
+worker, FastAPI, and any Redis or Temporal Server process that it started.
 
-```text
-http://YOUR_MAC_IP:8080/tinyUrl?url=https://example.com
-http://YOUR_MAC_IP:8080/display
-http://YOUR_MAC_IP:8080/health
-http://YOUR_MAC_IP:8080/docs
-```
+## Manual startup
 
-Your macOS firewall and network settings must allow incoming connections.
+Use this sequence when troubleshooting individual components. Keep each
+foreground process open in its own terminal.
 
-## Stop the local environment
-
-Press `Control+C` in the FastAPI, Temporal worker, and Temporal Server
-terminals. Stop the background Redis process with:
+### Terminal 1: Redis
 
 ```bash
-/opt/homebrew/bin/redis-cli shutdown  # Ask Redis to save its data and stop cleanly.
+redis-server --daemonize yes  # Start Redis in the background.
+redis-cli ping  # Confirm Redis is running; it should return PONG.
 ```
+
+See the [Redis reference](depdency/redis_reference.md) for inspection and
+configuration commands.
+
+### Terminal 2: Temporal Server
+
+```bash
+temporal server start-dev  # Start Temporal Server and its local Web UI.
+```
+
+### Terminal 3: Temporal worker
+
+```bash
+source .venv/bin/activate  # Make this terminal use the project's Python environment.
+python -m temporal_service.worker  # Poll for and execute Temporal workflow tasks.
+```
+
+### Terminal 4: FastAPI
+
+```bash
+source .venv/bin/activate  # Make this terminal use the project's Python environment.
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8080  # Start the FastAPI development server.
+```
+
+See the [Temporal reference](depdency/temporal_reference.md) for namespace,
+address, and task-queue configuration.
 
 ## Troubleshooting
 
-- `Error 61 connecting to 127.0.0.1:6379`: Redis is not running. Repeat step 2.
-- Temporal connection errors for `127.0.0.1:7233`: Temporal Server is not
-  running. Repeat step 3.
-- A workflow request waits indefinitely: confirm the Temporal worker from step
-  4 is running and uses the same task queue as the API.
+- `Required command not found`: install the missing system dependency from
+  step 2.
+- `Python virtual environment not found`: complete step 3 from the project
+  root.
+- `Error 61 connecting to 127.0.0.1:6379`: Redis is not running or is using a
+  different address.
+- A connection error for `127.0.0.1:7233`: Temporal Server is not running.
+- A workflow request waits indefinitely: the Temporal worker is not running or
+  its namespace or task queue does not match FastAPI.
+
+## Access from another device
+
+Find the Mac's Wi-Fi IP address:
+
+```bash
+ipconfig getifaddr en0  # Print the Mac's Wi-Fi IP address.
+```
+
+Replace `YOUR_MAC_IP` in the application URLs, for example:
+
+```text
+http://YOUR_MAC_IP:8080/docs
+http://YOUR_MAC_IP:8080/health
+```
+
+The macOS firewall and local network must allow incoming connections.
