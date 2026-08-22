@@ -44,7 +44,7 @@
 
 | Method | Path | Input | Description | Documentation |
 | --- | --- | --- | --- | --- |
-| `POST` | `/v1/shorten` | JSON `url` field | Returns the existing short key for a URL or creates an eight-character key. | [Guide](apis/url_shortening.md) |
+| `POST` | `/v1/shorten` | JSON `url` field | Creates a unique eight-character key for a URL. | [Guide](apis/url_shortening.md) |
 | `GET` | `/{shortKey}` | Eight-character short key | Opens the stored URL in a new browser tab, with a current-tab fallback. | [Guide](apis/url_shortening.md) |
 | `GET` | `/display` | None | Returns a JPEG image. | [Guide](apis/message.md) |
 | `GET` | `/health` | None | Returns the application's health status. | [Guide](apis/health.md) |
@@ -55,9 +55,9 @@
 
 The FastAPI application is defined in `main.py`. Each API is implemented in a
 separate module under `routers/` and registered with `app.include_router()`.
-Python's standard-library `uuid4()` function supplies a unique integer, which
-the URL shortening router converts to base 62. Redis stores mappings in both
-directions so repeated URLs return the same code.
+Python's `secrets` module generates eight random letters and digits. Redis
+stores each code-to-URL mapping with an atomic `SET ... NX` command so an
+existing code cannot be overwritten.
 `infrastructure/clients.py` manages the asynchronous Redis client for the FastAPI
 lifespan. It also connects FastAPI to Temporal Server.
 `temporal/worker.py` registers the workflows and activities that
