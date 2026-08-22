@@ -6,9 +6,8 @@ an image response, and a health check.
 All endpoints run from one application and are organized with `APIRouter`.
 Redis stores URL-to-code mappings so generated short URLs can be resolved.
 
-Start with [How to run the server](docs/how_to_run_server.md). It covers the
-complete local environment: Redis, Temporal Server, the Temporal worker, and
-FastAPI.
+Start with [How to run the server](docs/how_to_run_server.md) for installation
+and local startup instructions.
 
 ## Documentation
 

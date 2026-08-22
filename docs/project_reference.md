@@ -8,6 +8,8 @@
 ├── database.py
 ├── requirements.txt
 ├── README.md
+├── scripts/
+│   └── run_local.sh
 ├── assets/
 │   └── metroidzm_map.jpg
 ├── routers/
