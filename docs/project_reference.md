@@ -44,8 +44,8 @@
 
 | Method | Path | Input | Description | Documentation |
 | --- | --- | --- | --- | --- |
-| `GET` | `/tinyUrl` | `url` query parameter | Stores a URL in Redis and returns a base-62 short code. | [Guide](apis/url_shortening.md) |
-| `GET` | `/go/{code}` | Path parameter | Redirects to a URL stored in Redis. | [Guide](apis/url_shortening.md) |
+| `POST` | `/v1/shorten` | JSON `url` field | Creates a unique eight-character key for a URL. | [Guide](apis/url_shortening.md) |
+| `GET` | `/{shortKey}` | Eight-character short key | Opens the stored URL in a new browser tab, with a current-tab fallback. | [Guide](apis/url_shortening.md) |
 | `GET` | `/display` | None | Returns a JPEG image. | [Guide](apis/message.md) |
 | `GET` | `/health` | None | Returns the application's health status. | [Guide](apis/health.md) |
 | `POST` | `/workflows/hello` | None | Starts `HelloWorkflow` and returns its result. | [Guide](apis/temporal_workflow.md) |
@@ -55,8 +55,9 @@
 
 The FastAPI application is defined in `main.py`. Each API is implemented in a
 separate module under `routers/` and registered with `app.include_router()`.
-Python's standard-library `uuid4()` function supplies a unique integer, which
-the URL shortening router converts to base 62 and stores mappings in Redis.
+Python's `secrets` module generates eight random letters and digits. Redis
+stores each code-to-URL mapping with an atomic `SET ... NX` command so an
+existing code cannot be overwritten.
 `infrastructure/clients.py` manages the asynchronous Redis client for the FastAPI
 lifespan. It also connects FastAPI to Temporal Server.
 `temporal/worker.py` registers the workflows and activities that

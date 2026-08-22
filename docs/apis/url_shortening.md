@@ -1,20 +1,28 @@
 # URL Shortening API
 
-Generates an eight-character base-62 short code for a URL. Every generated
-value uses the `go/` prefix and has the format `go/XXXXXXXX`.
+Returns an eight-character random short code for a URL. The response contains
+only the code and does not include a redirect-route prefix.
 
 ## Request
 
 ```text
-GET /tinyUrl?url=<URL>
+POST /v1/shorten
 ```
 
-The `url` query parameter is required.
+Send the long URL in a JSON request body:
+
+```json
+{
+  "url": "https://example.com/a/long/path"
+}
+```
 
 ### curl
 
 ```bash
-curl --get --data-urlencode "url=https://example.com/a/long/path" http://127.0.0.1:8080/tinyUrl
+curl -X POST http://127.0.0.1:8080/v1/shorten \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com/a/long/path"}'
 ```
 
 ### Python
@@ -22,9 +30,9 @@ curl --get --data-urlencode "url=https://example.com/a/long/path" http://127.0.0
 ```python
 import requests
 
-response = requests.get(
-    "http://127.0.0.1:8080/tinyUrl",
-    params={"url": "https://example.com/a/long/path"},
+response = requests.post(
+    "http://127.0.0.1:8080/v1/shorten",
+    json={"url": "https://example.com/a/long/path"},
     timeout=10,
 )
 response.raise_for_status()
@@ -35,30 +43,34 @@ print(response.json())
 
 ```json
 {
-  "original_url": "https://example.com/a/long/path",
-  "short_code": "go/3FzaP09x"
+  "shortKey": "3FzaP09x"
 }
 ```
 
-The endpoint generates a UUID and encodes its integer value using base 62. It
-limits the value to the eight-character base-62 range, pads shorter results
-with leading zeroes, and stores the code-to-URL mapping in Redis. A missing
-`url` parameter produces a `422 Unprocessable Entity` response.
+The endpoint generates eight random letters and digits, then stores the
+code-to-URL mapping in Redis. A missing `url` parameter produces a `422
+Unprocessable Entity` response.
 
 ## Follow a short URL
 
 Open the returned path on the same API server:
 
 ```text
-http://127.0.0.1:8080/go/3FzaP09x
+http://127.0.0.1:8080/3FzaP09x
 ```
 
-The API reads the original URL from Redis and responds with an HTTP redirect.
-An unknown or expired code produces a `404 Not Found` response.
+The code must contain exactly eight letters or digits. Validation happens
+before Redis is queried. An invalid code produces a client error, and an
+unknown or expired valid code produces `404 Not Found`.
 
-## How base-62 encoding works
+When the code exists, the response page attempts to open the original URL in a
+new browser tab. If the browser blocks automatic popups, it redirects the
+current tab instead and displays a clickable fallback link.
 
-The encoder uses 62 characters as digits:
+## How code generation works
+
+The generator chooses each character independently from this 62-character
+alphabet:
 
 ```text
 0-9 = values 0-9
@@ -66,26 +78,11 @@ a-z = values 10-35
 A-Z = values 36-61
 ```
 
-It repeatedly divides the UUID's integer value by 62. Each remainder selects a
-character, and that character is added to the beginning of the result. The process
-stops when the quotient reaches zero.
+Python's `secrets.choice()` is called eight times to produce a code such as
+`3FzaP09x`. Eight characters provide `62⁸`, or `218,340,105,584,896`, possible
+codes.
 
-For example, encoding the number `3844` works as follows:
-
-| Calculation | Quotient | Remainder | Character |
-| --- | ---: | ---: | --- |
-| `3844 ÷ 62` | 62 | 0 | `0` |
-| `62 ÷ 62` | 1 | 0 | `0` |
-| `1 ÷ 62` | 0 | 1 | `1` |
-
-Reading the characters in reverse calculation order produces `100`. For an
-eight-character code, the API pads it to `00000100` and then adds the prefix,
-resulting in `go/00000100`.
-
-In the implementation, `divmod(number, 62)` returns the quotient and remainder
-in one operation.
-
-Eight base-62 characters provide `62⁸`, or `218,340,105,584,896`, possible
-codes. Collisions are still possible because the code is generated randomly.
-The API uses Redis's atomic `SET ... NX` behavior to store a code only when it
-does not already exist. If a collision occurs, it generates another code.
+Redis stores the mapping with `SET ... NX`. The `NX` option means “only set the
+key when it does not already exist.” The availability check and write therefore
+happen as one atomic Redis command. If a generated code is already used, Redis
+does not overwrite it and the API generates another code.
