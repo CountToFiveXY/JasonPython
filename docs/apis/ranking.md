@@ -30,5 +30,6 @@ curl -X POST http://127.0.0.1:8080/v1/ranking \
 The image timestamp uses the server's local timezone. Counts are rounded to the
 nearest whole participant, with exact halves rounded up.
 
-Text is rendered in Arial, using Arial Bold where emphasized. A compatible
-sans-serif font is used as a fallback when Arial is unavailable.
+Text is rendered in Arial, using Arial Bold where emphasized. Car names shrink
+automatically to fit the header. Simplified Chinese car names use a compatible
+CJK sans-serif font such as Hiragino Sans GB, Microsoft YaHei, or Noto Sans CJK.

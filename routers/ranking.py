@@ -15,6 +15,8 @@ router = APIRouter(prefix="/v1/ranking", tags=["Images"])
 WIDTH = 304
 HEIGHT = 506
 LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "unite_galaxy_logo.png"
+CAR_TEXT_MAX_WIDTH = 92
+CAR_TEXT_MAX_HEIGHT = 48
 
 
 class CardType(str, Enum):
@@ -44,9 +46,37 @@ class RankingRequest(BaseModel):
         return value
 
 
-def _font(size: int, *, bold: bool = False, condensed: bool = False):
+def _contains_cjk(text: str) -> bool:
+    return any(
+        "\u3400" <= character <= "\u4dbf"
+        or "\u4e00" <= character <= "\u9fff"
+        or "\uf900" <= character <= "\ufaff"
+        for character in text
+    )
+
+
+def _font(
+    size: int,
+    *,
+    bold: bool = False,
+    condensed: bool = False,
+    text: str = "",
+):
     del condensed  # Retained in the signature for the existing layout calls.
     candidates = []
+    if _contains_cjk(text):
+        candidates.extend(
+            [
+                "/System/Library/Fonts/Hiragino Sans GB.ttc",
+                "/System/Library/Fonts/STHeiti Medium.ttc",
+                "C:/Windows/Fonts/msyhbd.ttc" if bold else "C:/Windows/Fonts/msyh.ttc",
+                "C:/Windows/Fonts/simhei.ttf",
+                "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
+                if bold
+                else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf",
+            ]
+        )
     if bold:
         candidates.extend(
             [
@@ -68,6 +98,24 @@ def _font(size: int, *, bold: bool = False, condensed: bool = False):
         if Path(candidate).exists():
             return ImageFont.truetype(candidate, size=size)
     return ImageFont.load_default(size=size)
+
+
+def _fitted_font(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    *,
+    maximum_size: int,
+    maximum_width: int,
+    maximum_height: int,
+    bold: bool = False,
+    condensed: bool = False,
+):
+    for size in range(maximum_size, 7, -1):
+        font = _font(size, bold=bold, condensed=condensed, text=text)
+        box = draw.textbbox((0, 0), text, font=font)
+        if box[2] - box[0] <= maximum_width and box[3] - box[1] <= maximum_height:
+            return font
+    return _font(8, bold=bold, condensed=condensed, text=text)
 
 
 def ranking_count(total: int, percentage: int) -> int:
@@ -111,10 +159,16 @@ def render_ranking(
     draw = ImageDraw.Draw(image)
     _draw_logo(image)
 
-    car_font = _font(38, bold=True, condensed=True)
     car_text = request.car.upper()
-    while draw.textbbox((0, 0), car_text, font=car_font)[2] > 92 and car_font.size > 18:
-        car_font = _font(car_font.size - 1, bold=True, condensed=True)
+    car_font = _fitted_font(
+        draw,
+        car_text,
+        maximum_size=38,
+        maximum_width=CAR_TEXT_MAX_WIDTH,
+        maximum_height=CAR_TEXT_MAX_HEIGHT,
+        bold=True,
+        condensed=True,
+    )
     _centered_text(draw, (229, 29), car_text, car_font, "white")
 
     row_top = 105
