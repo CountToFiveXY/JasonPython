@@ -21,7 +21,7 @@ returns the generated image without writing a copy to its local filesystem.
 Save the response to a specific path with curl:
 
 ```bash
-curl -X POST http://127.0.0.1:8080/v1/ranking \
+curl -X POST http://127.0.0.1:8000/v1/ranking \
   -H 'Content-Type: application/json' \
   -d '{"total":28916,"type":"CH","car":"Galaxy"}' \
   --output ranking.png

@@ -20,7 +20,7 @@ Send the long URL in a JSON request body:
 ### curl
 
 ```bash
-curl -X POST http://127.0.0.1:8080/v1/shorten \
+curl -X POST http://127.0.0.1:8000/v1/shorten \
   -H 'Content-Type: application/json' \
   -d '{"url":"https://example.com/a/long/path"}'
 ```
@@ -31,7 +31,7 @@ curl -X POST http://127.0.0.1:8080/v1/shorten \
 import requests
 
 response = requests.post(
-    "http://127.0.0.1:8080/v1/shorten",
+    "http://127.0.0.1:8000/v1/shorten",
     json={"url": "https://example.com/a/long/path"},
     timeout=10,
 )
@@ -56,7 +56,7 @@ Unprocessable Entity` response.
 Open the returned path on the same API server:
 
 ```text
-http://127.0.0.1:8080/go/3FzaP09x
+http://127.0.0.1:8000/go/3FzaP09x
 ```
 
 The code must contain exactly eight letters or digits. Validation happens

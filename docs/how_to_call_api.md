@@ -1,6 +1,6 @@
 # How to Call the APIs
 
-The examples assume the server is running at `http://127.0.0.1:8080`.
+The examples assume the server is running at `http://127.0.0.1:8000`.
 
 Each endpoint has its own guide:
 
@@ -11,4 +11,4 @@ Each endpoint has its own guide:
 - [Temporal workflow API](apis/temporal_workflow.md)
 
 Interactive documentation for all endpoints is available at
-<http://127.0.0.1:8080/docs>.
+<http://127.0.0.1:8000/docs>.

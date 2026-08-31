@@ -11,7 +11,7 @@ GET /display
 ### curl
 
 ```bash
-curl http://127.0.0.1:8080/display --output metroidzm_map.jpg
+curl http://127.0.0.1:8000/display --output metroidzm_map.jpg
 ```
 
 ## Response
@@ -22,5 +22,5 @@ The response body contains JPEG image data with this content type:
 Content-Type: image/jpeg
 ```
 
-Open <http://127.0.0.1:8080/display> in a browser to display the image. This
+Open <http://127.0.0.1:8000/display> in a browser to display the image. This
 endpoint does not require any parameters.

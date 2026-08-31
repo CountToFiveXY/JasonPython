@@ -17,33 +17,16 @@ cd JasonPython  # Enter the project root directory.
 
 All remaining commands assume your terminal is in the project root.
 
-### 2. Install the system dependencies
+### 2. Install Homebrew
 
-On macOS with Homebrew:
-
-```bash
-brew install redis temporal  # Install Redis and the Temporal command-line tool.
-```
-
-Confirm that Python 3 is installed:
+The startup script installs Redis, Temporal, and Python automatically when they
+are missing. Homebrew itself must already be available:
 
 ```bash
-python3 --version  # Print the installed Python version.
+brew --version
 ```
 
-### 3. Create the Python environment
-
-Run these commands from the project root:
-
-```bash
-python3 -m venv .venv  # Create an isolated Python environment in the project.
-source .venv/bin/activate  # Make this terminal use the new Python environment.
-python -m pip install -r requirements.txt  # Install FastAPI, Redis, Temporal, and Uvicorn packages.
-```
-
-You only need to create the virtual environment once. The startup script uses
-`.venv/bin/python` directly, so you do not need to activate the environment
-again before running it.
+If Homebrew is not installed, get it from <https://brew.sh>.
 
 ## Start the complete local environment
 
@@ -55,10 +38,12 @@ Run one command from the project root:
 
 Leave this terminal open. The script:
 
-1. Starts Redis, unless Redis is already running.
-2. Starts Temporal Server, unless it is already running.
-3. Starts the Python Temporal worker.
-4. Starts FastAPI with automatic reload enabled.
+1. Installs missing Homebrew dependencies.
+2. Creates `.venv` and installs Python requirements when needed.
+3. Starts Redis, unless Redis is already running.
+4. Starts Temporal Server, unless it is already running.
+5. Starts the Python Temporal worker.
+6. Starts FastAPI on port 8000, falling back to 8088 and then 8888 when busy.
 
 An existing Redis or Temporal Server instance is reused and will not be stopped
 by the script. By default, Redis saves its snapshot to the parent workspace at
@@ -66,23 +51,24 @@ by the script. By default, Redis saves its snapshot to the parent workspace at
 
 ## Verify the application
 
-Wait until the startup output says that FastAPI is running. Then open:
+Wait until the startup output says that FastAPI is running. It prints the
+selected URL. With the preferred port, open:
 
-- FastAPI documentation: <http://127.0.0.1:8080/docs>
-- Health endpoint: <http://127.0.0.1:8080/health>
+- FastAPI documentation: <http://127.0.0.1:8000/docs>
+- Health endpoint: <http://127.0.0.1:8000/health>
 - Temporal Web UI: <http://127.0.0.1:8233>
 
 Run a Temporal workflow from another terminal:
 
 ```bash
-curl -X POST http://127.0.0.1:8080/workflows/hello
+curl -X POST http://127.0.0.1:8000/workflows/hello
 # Start the hello workflow; the worker prints "Hello there" and returns it.
 ```
 
 Run the greeting workflow with a custom name:
 
 ```bash
-curl -X POST http://127.0.0.1:8080/workflows/greeting \
+curl -X POST http://127.0.0.1:8000/workflows/greeting \
   -H 'Content-Type: application/json' \
   -d '{"name":"Jason"}'
 # Start a greeting workflow through FastAPI and wait for its result.
@@ -132,7 +118,7 @@ python -m temporal.worker  # Poll for and execute Temporal workflow tasks.
 
 ```bash
 source .venv/bin/activate  # Make this terminal use the project's Python environment.
-python -m uvicorn main:app --reload --host 0.0.0.0 --port 8080  # Start the FastAPI development server.
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000  # Start the FastAPI development server.
 ```
 
 See the [Temporal reference](depdency/temporal_reference.md) for namespace,
@@ -140,10 +126,11 @@ address, and task-queue configuration.
 
 ## Troubleshooting
 
-- `Required command not found`: install the missing system dependency from
-  step 2.
-- `Python virtual environment not found`: complete step 3 from the project
-  root.
+- `Homebrew is required`: install Homebrew from <https://brew.sh>.
+- A package installation failure: review the command output, fix the reported
+  Homebrew or pip issue, and run the same startup script again.
+- Ports 8000, 8088, and 8888 are all busy: stop one conflicting process or set
+  `FASTAPI_PORT` to another available port.
 - `Error 61 connecting to 127.0.0.1:6379`: Redis is not running or is using a
   different address.
 - A connection error for `127.0.0.1:7233`: Temporal Server is not running.
@@ -161,8 +148,8 @@ ipconfig getifaddr en0  # Print the Mac's Wi-Fi IP address.
 Replace `YOUR_MAC_IP` in the application URLs, for example:
 
 ```text
-http://YOUR_MAC_IP:8080/docs
-http://YOUR_MAC_IP:8080/health
+http://YOUR_MAC_IP:8000/docs
+http://YOUR_MAC_IP:8000/health
 ```
 
 The macOS firewall and local network must allow incoming connections.

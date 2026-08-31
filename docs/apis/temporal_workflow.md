@@ -18,7 +18,7 @@ The request does not require a body or query parameters.
 ### curl
 
 ```bash
-curl -X POST http://127.0.0.1:8080/workflows/hello
+curl -X POST http://127.0.0.1:8000/workflows/hello
 ```
 
 ## Response
@@ -47,7 +47,7 @@ the workflow's event history.
 The Temporal API also accepts a custom name:
 
 ```bash
-curl -X POST http://127.0.0.1:8080/workflows/greeting \
+curl -X POST http://127.0.0.1:8000/workflows/greeting \
   -H 'Content-Type: application/json' \
   -d '{"name":"Jason"}'
 ```

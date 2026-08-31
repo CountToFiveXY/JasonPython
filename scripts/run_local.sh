@@ -3,12 +3,19 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-python_bin="$project_dir/.venv/bin/python"
+venv_dir="$project_dir/.venv"
+python_bin="$venv_dir/bin/python"
+requirements_file="$project_dir/requirements.txt"
+requirements_stamp="$venv_dir/.requirements.sha256"
+api_port_file="$venv_dir/jasonapp-api-port"
 redis_data_dir="${REDIS_DATA_DIR:-$(dirname "$project_dir")/redis}"
 redis_started=0
 temporal_pid=""
 worker_pid=""
 api_pid=""
+api_port=""
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 if [[ -t 1 ]]; then
     highlight_color=$'\033[1;38;5;208m'
@@ -53,6 +60,94 @@ require_command() {
     fi
 }
 
+install_system_dependencies() {
+    local formulas=()
+
+    if ! command -v brew >/dev/null 2>&1; then
+        highlight_error "Homebrew is required to install Redis, Temporal, and Python dependencies."
+        highlight_error "Install Homebrew from https://brew.sh, then run this script again."
+        exit 1
+    fi
+    command -v redis-server >/dev/null 2>&1 || formulas+=(redis)
+    command -v temporal >/dev/null 2>&1 || formulas+=(temporal)
+    command -v python3 >/dev/null 2>&1 || formulas+=(python)
+
+    if (( ${#formulas[@]} > 0 )); then
+        highlight "Installing missing system dependencies: ${formulas[*]}"
+        if ! brew install "${formulas[@]}"; then
+            highlight_error "Could not install the required Homebrew packages."
+            highlight_error "Open Terminal and run: brew update"
+            highlight_error "Then run: brew install ${formulas[*]}"
+            highlight_error "After installation finishes, click Activate All Services again."
+            exit 1
+        fi
+    fi
+}
+
+prepare_python_environment() {
+    local current_hash
+    local installed_hash=""
+
+    if [[ ! -x "$python_bin" ]]; then
+        highlight "Creating Python virtual environment at $venv_dir..."
+        if ! python3 -m venv "$venv_dir"; then
+            highlight_error "Could not create the Python virtual environment."
+            highlight_error "Open Terminal and run: brew install python"
+            highlight_error "Then click Activate All Services again."
+            exit 1
+        fi
+    fi
+
+    current_hash="$(shasum -a 256 "$requirements_file" | awk '{print $1}')"
+    if [[ -f "$requirements_stamp" ]]; then
+        installed_hash="$(<"$requirements_stamp")"
+    fi
+
+    if [[ "$current_hash" != "$installed_hash" ]]; then
+        highlight "Installing Python dependencies..."
+        if ! "$python_bin" -m pip install --upgrade pip || \
+           ! "$python_bin" -m pip install -r "$requirements_file"; then
+            highlight_error "Could not install the Python dependencies."
+            highlight_error "Check your internet connection, then click Activate All Services again."
+            highlight_error "For manual troubleshooting, run:"
+            highlight_error "  $python_bin -m pip install -r $requirements_file"
+            exit 1
+        fi
+        printf '%s\n' "$current_hash" > "$requirements_stamp"
+    else
+        highlight "Python dependencies are up to date."
+    fi
+}
+
+select_api_port() {
+    local preferred_port="${FASTAPI_PORT:-8000}"
+    local candidates=("$preferred_port" 8000 8088 8888)
+    local candidate
+    local seen=" "
+
+    for candidate in "${candidates[@]}"; do
+        if [[ ! "$candidate" =~ ^[0-9]+$ ]] || (( candidate < 1 || candidate > 65535 )); then
+            highlight_error "Ignoring invalid FastAPI port: $candidate"
+            continue
+        fi
+        if [[ "$seen" == *" $candidate "* ]]; then
+            continue
+        fi
+        seen+="$candidate "
+        if ! nc -z 127.0.0.1 "$candidate" >/dev/null 2>&1; then
+            api_port="$candidate"
+            printf '%s\n' "$api_port" > "$api_port_file"
+            if [[ "$api_port" != "$preferred_port" ]]; then
+                highlight "FastAPI port $preferred_port is busy; using $api_port instead."
+            fi
+            return
+        fi
+    done
+
+    highlight_error "No FastAPI port is available. Tried: $preferred_port, 8000, 8088, 8888"
+    exit 1
+}
+
 wait_for_port() {
     local host="$1"
     local port="$2"
@@ -81,20 +176,21 @@ cleanup() {
     if [[ "$redis_started" -eq 1 ]]; then
         redis-cli shutdown >/dev/null 2>&1 || true
     fi
+
+    rm -f "$api_port_file"
 }
 
 trap cleanup EXIT INT TERM
 
+rm -f "$api_port_file"
+install_system_dependencies
 require_command redis-server
 require_command redis-cli
 require_command temporal
 require_command nc
-
-if [[ ! -x "$python_bin" ]]; then
-    highlight_error "Python virtual environment not found at $project_dir/.venv"
-    highlight_error "Create it and install dependencies before running this script."
-    exit 1
-fi
+require_command shasum
+prepare_python_environment
+select_api_port
 
 if [[ ! -d "$redis_data_dir" ]] && ! mkdir -p "$redis_data_dir"; then
     highlight_error "Could not create Redis data directory: $redis_data_dir"
@@ -138,11 +234,11 @@ highlight "Starting Temporal worker..."
 "$python_bin" -m temporal.worker &
 worker_pid=$!
 
-highlight "Starting FastAPI at http://127.0.0.1:8080..."
-"$python_bin" -m uvicorn main:app --reload --host 0.0.0.0 --port 8080 &
+highlight "Starting FastAPI at http://127.0.0.1:$api_port..."
+"$python_bin" -m uvicorn main:app --reload --host 0.0.0.0 --port "$api_port" &
 api_pid=$!
 
 highlight_link "Temporal Web UI" "http://127.0.0.1:8233"
-highlight_link "You can now try calling APIs in -->" "http://127.0.0.1:8080/docs"
+highlight_link "You can now try calling APIs in -->" "http://127.0.0.1:$api_port/docs"
 highlight "Press Control+C to stop the processes started by this script."
 wait "$api_pid"

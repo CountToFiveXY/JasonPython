@@ -70,5 +70,5 @@ process Temporal tasks.
 
 While the server is running, FastAPI provides:
 
-- Swagger UI: <http://127.0.0.1:8080/docs>
-- OpenAPI schema: <http://127.0.0.1:8080/openapi.json>
+- Swagger UI: <http://127.0.0.1:8000/docs>
+- OpenAPI schema: <http://127.0.0.1:8000/openapi.json>

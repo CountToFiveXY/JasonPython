@@ -20,7 +20,7 @@ server does not automatically start the worker.
 ## Run and inspect a workflow
 
 ```bash
-curl -X POST http://127.0.0.1:8080/workflows/greeting \
+curl -X POST http://127.0.0.1:8000/workflows/greeting \
   -H 'Content-Type: application/json' \
   -d '{"name":"Jason"}'
 # Start a greeting workflow through FastAPI and wait for its result.
