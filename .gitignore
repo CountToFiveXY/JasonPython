@@ -4,3 +4,8 @@ __pycache__/
 *.rdb
 .idea/
 .DS_Store
+
+# Service-account credentials must remain outside the repository.
+*firebase-adminsdk*.json
+service-account*.json
+credentials/*.json

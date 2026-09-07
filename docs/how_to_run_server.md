@@ -4,6 +4,14 @@ Follow this guide from the project root when setting up the application for the
 first time. The local environment includes Redis, Temporal Server, a Temporal
 worker, and FastAPI.
 
+The order API also requires credentials for the `jasonapp-xm0830` Firebase
+project. Before starting locally, set `GOOGLE_APPLICATION_CREDENTIALS` to the
+absolute path of a service-account JSON file stored outside this repository:
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="/absolute/path/to/service-account.json"
+```
+
 ## First-time setup
 
 ### 1. Download the project
@@ -65,17 +73,17 @@ curl -X POST http://127.0.0.1:8000/workflows/hello
 # Start the hello workflow; the worker prints "Hello there" and returns it.
 ```
 
-Run the greeting workflow with a custom name:
+Create an order and start its workflow:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/workflows/greeting \
+curl -X POST http://127.0.0.1:8000/v1/order \
   -H 'Content-Type: application/json' \
-  -d '{"name":"Jason"}'
-# Start a greeting workflow through FastAPI and wait for its result.
+  -d '{"user_id":"user-123"}'
+# Create an order in Firestore and start its Temporal workflow.
 ```
 
-The response contains a workflow ID and greeting result. Search for the
-workflow ID in the Temporal Web UI to inspect its event history.
+The response contains the order ID, creation time, and matching workflow ID.
+Search for that ID in the Temporal Web UI to inspect its event history.
 
 Other available endpoints are documented in
 [How to call the API](how_to_call_api.md).
@@ -136,6 +144,8 @@ address, and task-queue configuration.
 - A connection error for `127.0.0.1:7233`: Temporal Server is not running.
 - A workflow request waits indefinitely: the Temporal worker is not running or
   its namespace or task queue does not match FastAPI.
+- `DefaultCredentialsError`: set `GOOGLE_APPLICATION_CREDENTIALS` to a valid
+  service-account JSON file for the Firebase project.
 
 ## Access from another device
 

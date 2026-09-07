@@ -42,14 +42,15 @@ Hello there
 Open <http://127.0.0.1:8233> and search for the returned workflow ID to inspect
 the workflow's event history.
 
-## Greeting workflow
+## Order workflow
 
-The Temporal API also accepts a custom name:
+Creating an order starts `GreetingWorkflow` using the order UUID:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/workflows/greeting \
+curl -X POST http://127.0.0.1:8000/v1/order \
   -H 'Content-Type: application/json' \
-  -d '{"name":"Jason"}'
+  -d '{"user_id":"user-123"}'
 ```
 
-This starts `GreetingWorkflow` and returns a result such as `Hello, Jason!`.
+The workflow ID is the same as the order ID. The endpoint returns immediately
+after starting the workflow rather than waiting for its greeting result.

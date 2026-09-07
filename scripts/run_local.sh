@@ -9,6 +9,7 @@ requirements_file="$project_dir/requirements.txt"
 requirements_stamp="$venv_dir/.requirements.sha256"
 api_port_file="$venv_dir/jasonapp-api-port"
 redis_data_dir="${REDIS_DATA_DIR:-$(dirname "$project_dir")/redis}"
+firebase_credentials_default="$HOME/.config/jasonapp/service-account.json"
 redis_started=0
 temporal_pid=""
 worker_pid=""
@@ -16,6 +17,11 @@ api_pid=""
 api_port=""
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]] && \
+   [[ -f "$firebase_credentials_default" ]]; then
+    export GOOGLE_APPLICATION_CREDENTIALS="$firebase_credentials_default"
+fi
 
 if [[ -t 1 ]]; then
     highlight_color=$'\033[1;38;5;208m'
