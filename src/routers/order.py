@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import os
 from uuid import uuid4
 
@@ -8,13 +8,15 @@ from google.cloud.firestore_v1 import Client as FirestoreClient
 from pydantic import BaseModel, Field, field_validator
 from temporalio.client import Client as TemporalClient
 
-from infrastructure.clients import get_firestore, get_temporal
-from temporal.workflows import GreetingWorkflow
+from src.infrastructure.clients import get_firestore, get_temporal
+from src.temporal.workflows.order import OrderWorkflow
+from src.temporal.workflows.order_cleanup import OrderCleanupWorkflow
 
 
 router = APIRouter(prefix="/v1/order", tags=["Orders"])
 TEMPORAL_TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "utility-api")
 ORDER_COLLECTION = os.getenv("FIRESTORE_ORDER_COLLECTION", "orders")
+ORDER_CLEANUP_WORKFLOW_SUFFIX = "-cleanup"
 
 
 class OrderRequest(BaseModel):
@@ -33,6 +35,7 @@ class Order(BaseModel):
     id: str
     user_id: str
     created: datetime
+    expires_at: datetime
 
 
 class OrderResponse(Order):
@@ -46,18 +49,26 @@ async def create_order(
     temporal_client: TemporalClient = Depends(get_temporal),
 ) -> OrderResponse:
     order_id = str(uuid4())
+    created = datetime.now(timezone.utc)
     order = Order(
         id=order_id,
         user_id=request.user_id,
-        created=datetime.now(timezone.utc),
+        created=created,
+        expires_at=created + timedelta(days=1),
     )
     document = firestore_client.collection(ORDER_COLLECTION).document(order_id)
 
     await asyncio.to_thread(document.create, order.model_dump())
     await temporal_client.start_workflow(
-        GreetingWorkflow.run,
+        OrderWorkflow.run,
         order_id,
         id=order_id,
+        task_queue=TEMPORAL_TASK_QUEUE,
+    )
+    await temporal_client.start_workflow(
+        OrderCleanupWorkflow.run,
+        order_id,
+        id=f"{order_id}{ORDER_CLEANUP_WORKFLOW_SUFFIX}",
         task_queue=TEMPORAL_TASK_QUEUE,
     )
 

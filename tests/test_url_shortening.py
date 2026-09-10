@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from routers.url_shortening import (
+from src.routers.url_shortening import (
     REDIS_KEY_PREFIX,
     ShortenRequest,
     redirect_short_url,
@@ -35,7 +35,7 @@ class UrlShorteningTests(unittest.IsolatedAsyncioTestCase):
     async def test_stores_generated_code(self) -> None:
         redis = FakeRedis()
 
-        with patch("routers.url_shortening.generate_short_code", return_value="Ab12Cd34"):
+        with patch("src.routers.url_shortening.generate_short_code", return_value="Ab12Cd34"):
             request = ShortenRequest(url="https://example.com/long")
             result = await shorten_url(request, redis)
 
@@ -51,7 +51,7 @@ class UrlShorteningTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with patch(
-            "routers.url_shortening.generate_short_code",
+            "src.routers.url_shortening.generate_short_code",
             side_effect=["Ab12Cd34", "Zx98Yw76"],
         ):
             request = ShortenRequest(url="https://second.example.com/")

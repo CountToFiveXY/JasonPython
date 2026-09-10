@@ -5,7 +5,7 @@ from unittest.mock import patch
 from fastapi import HTTPException
 from google.auth.exceptions import DefaultCredentialsError
 
-from infrastructure.clients import get_firestore
+from src.infrastructure.clients import get_firestore
 
 
 class ClientDependencyTests(unittest.TestCase):
@@ -13,9 +13,9 @@ class ClientDependencyTests(unittest.TestCase):
         request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
 
         with (
-            patch("infrastructure.clients.firebase_admin.get_app", return_value=object()),
+            patch("src.infrastructure.clients.firebase_admin.get_app", return_value=object()),
             patch(
-                "infrastructure.clients.firestore.client",
+                "src.infrastructure.clients.firestore.client",
                 side_effect=DefaultCredentialsError("credentials missing"),
             ),
             self.assertRaises(HTTPException) as raised,

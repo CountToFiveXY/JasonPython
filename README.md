@@ -3,7 +3,8 @@
 A small FastAPI project containing utility APIs for URL shortening, image
 responses (including a generated participant card), health checks, and Temporal
 workflows. The order API persists orders to Cloud Firestore before starting a
-workflow with the same ID.
+workflow with the same ID. The workflow waits up to one hour for a success
+event published to Kafka, then runs its completion activity.
 
 All endpoints run from one application and are organized with `APIRouter`.
 Redis stores URL-to-code mappings so generated short URLs can be resolved.
@@ -17,5 +18,6 @@ and local startup instructions.
 - [Redis reference](docs/depdency/redis_reference.md)
 - [Temporal reference](docs/depdency/temporal_reference.md)
 - [Firestore reference](docs/depdency/firestore_reference.md)
+- [Kafka reference](docs/depdency/kafka_reference.md)
 - [How to call the API](docs/how_to_call_api.md)
 - [Project reference](docs/project_reference.md)

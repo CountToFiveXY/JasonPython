@@ -23,11 +23,12 @@ server does not automatically start the worker.
 curl -X POST http://127.0.0.1:8000/v1/order \
   -H 'Content-Type: application/json' \
   -d '{"user_id":"user-123"}'
-# Create an order and start GreetingWorkflow with the order UUID.
+# Create an order and start OrderWorkflow with the order UUID.
 ```
 
 The order ID and workflow ID are identical. Search for that ID in the Temporal
-Web UI at <http://127.0.0.1:8233> to inspect its event history.
+Web UI at <http://127.0.0.1:8233> to inspect its one-hour timer, Kafka-delivered
+signal, completion activity, and final result.
 
 ## Configuration
 

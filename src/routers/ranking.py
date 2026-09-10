@@ -14,7 +14,7 @@ router = APIRouter(prefix="/v1/ranking", tags=["Images"])
 
 WIDTH = 304
 HEIGHT = 506
-LOGO_PATH = Path(__file__).resolve().parent.parent / "assets" / "unite_galaxy_logo.png"
+LOGO_PATH = Path(__file__).resolve().parents[2] / "assets" / "unite_galaxy_logo.png"
 CAR_TEXT_MAX_WIDTH = 92
 CAR_TEXT_MAX_HEIGHT = 48
 

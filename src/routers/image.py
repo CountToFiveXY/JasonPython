@@ -5,9 +5,9 @@ from fastapi.responses import FileResponse
 
 
 router = APIRouter(prefix="/display", tags=["Images"])
-IMAGE_PATH = Path(__file__).resolve().parent.parent / "assets" / "metroidzm_map.jpg"
+IMAGE_PATH = Path(__file__).resolve().parents[2] / "assets" / "metroidzm_map.jpg"
 
 
 @router.get("")
-def display_image() -> FileResponse:
+def get_image() -> FileResponse:
     return FileResponse(IMAGE_PATH, media_type="image/jpeg")

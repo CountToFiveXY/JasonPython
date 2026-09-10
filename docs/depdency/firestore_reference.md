@@ -26,3 +26,7 @@ account instead of a downloaded key.
 | `FIRESTORE_ORDER_COLLECTION` | `orders` | Collection containing order documents |
 
 The service account needs permission to create documents in Cloud Firestore.
+Order documents use the `expires_at` timestamp for automatic cleanup. A
+dedicated Temporal cleanup workflow deletes each document after 24 hours. A
+native Firestore TTL policy on the `orders` collection group's `expires_at`
+field can also be enabled when the project administrator grants permission.

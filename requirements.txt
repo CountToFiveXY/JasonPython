@@ -1,3 +1,4 @@
+aiokafka
 fastapi
 firebase-admin
 pillow

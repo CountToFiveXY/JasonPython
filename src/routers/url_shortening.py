@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, HttpUrl
 from redis.asyncio import Redis
 
-from infrastructure.clients import get_redis
+from src.infrastructure.clients import get_redis
 
 
 router = APIRouter(tags=["URL Shortening"])

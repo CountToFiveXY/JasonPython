@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageDraw
 
-from routers.ranking import (
+from src.routers.ranking import (
     CardType,
     PERCENTAGES,
     RankingRequest,

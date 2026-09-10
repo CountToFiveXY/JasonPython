@@ -4,44 +4,64 @@
 
 ```text
 .
-├── main.py
-├── infrastructure/
+├── src/
 │   ├── __init__.py
-│   └── clients.py
+│   ├── main.py
+│   ├── infrastructure/
+│   │   ├── __init__.py
+│   │   └── clients.py
+│   ├── routers/
+│   │   ├── __init__.py
+│   │   ├── url_shortening.py
+│   │   ├── image.py
+│   │   ├── messages.py
+│   │   ├── ranking.py
+│   │   ├── health.py
+│   │   ├── hello.py
+│   │   └── order.py
+│   ├── temporal/
+│   │   ├── __init__.py
+│   │   ├── worker.py
+│   │   ├── activities/
+│   │   │   ├── __init__.py
+│   │   │   ├── greeting.py
+│   │   │   ├── hello.py
+│   │   │   ├── order.py
+│   │   │   └── order_cleanup.py
+│   │   └── workflows/
+│   │       ├── __init__.py
+│   │       ├── greeting.py
+│   │       ├── hello.py
+│   │       ├── order.py
+│   │       └── order_cleanup.py
+│   └── messaging/
+│       ├── __init__.py
+│       ├── config.py
+│       ├── events.py
+│       └── worker.py
 ├── requirements.txt
 ├── README.md
 ├── scripts/
 │   └── run_local.sh
 ├── assets/
 │   └── metroidzm_map.jpg
-├── routers/
-│   ├── __init__.py
-│   ├── url_shortening.py
-│   ├── messages.py
-│   ├── ranking.py
-│   ├── health.py
-│   ├── hello.py
-│   └── order.py
-├── temporal/
-│   ├── __init__.py
-│   ├── activities.py
-│   ├── workflows.py
-│   └── worker.py
 └── docs/
     ├── how_to_run_server.md
     ├── depdency/
     │   ├── redis_reference.md
     │   ├── temporal_reference.md
-    │   └── firestore_reference.md
+    │   ├── firestore_reference.md
+    │   └── kafka_reference.md
     ├── how_to_call_api.md
     ├── project_reference.md
     └── apis/
         ├── ranking.md
         ├── order.md
+        ├── messages.md
         ├── url_shortening.md
-        ├── message.md
+        ├── image.md
         ├── health.md
-        └── temporal_workflow.md
+        └── hello.md
 ```
 
 ## Endpoints
@@ -50,23 +70,26 @@
 | --- | --- | --- | --- | --- |
 | `POST` | `/v1/shorten` | JSON `url` field | Creates a unique eight-character key for a URL. | [Guide](apis/url_shortening.md) |
 | `GET` | `/go/{shortKey}` | Eight-character short key | Opens the stored URL in a new browser tab, with a current-tab fallback. | [Guide](apis/url_shortening.md) |
-| `GET` | `/display` | None | Returns a JPEG image. | [Guide](apis/message.md) |
+| `GET` | `/display` | None | Returns a JPEG image. | [Guide](apis/image.md) |
 | `POST` | `/v1/ranking` | JSON `total`, `type`, and `car` fields | Renders a ranking PNG. | [Guide](apis/ranking.md) |
 | `GET` | `/health` | None | Returns the application's health status. | [Guide](apis/health.md) |
-| `POST` | `/workflows/hello` | None | Starts `HelloWorkflow` and returns its result. | [Guide](apis/temporal_workflow.md) |
-| `POST` | `/v1/order` | JSON `user_id` field | Creates an order and starts `GreetingWorkflow` using the order ID. | [Guide](apis/order.md) |
+| `POST` | `/workflows/hello` | None | Starts `HelloWorkflow` and returns its result. | [Guide](apis/hello.md) |
+| `POST` | `/v1/order` | JSON `user_id` field | Creates an order and starts a signal-waiting `OrderWorkflow`. | [Guide](apis/order.md) |
+| `POST` | `/v1/messages` | JSON `id` and `status` fields | Publishes an order status for the Kafka worker. | [Guide](apis/messages.md) |
 
 ## Implementation
 
-The FastAPI application is defined in `main.py`. Each API is implemented in a
-separate module under `routers/` and registered with `app.include_router()`.
+The FastAPI application is defined in `src/main.py`. Each API is implemented in
+a separate module under `src/routers/` and registered with `app.include_router()`.
 Python's `secrets` module generates eight random letters and digits. Redis
 stores each code-to-URL mapping with an atomic `SET ... NX` command so an
 existing code cannot be overwritten.
-`infrastructure/clients.py` manages the asynchronous Redis client for the FastAPI
-lifespan. It also connects FastAPI to Temporal Server and Firestore.
-`temporal/worker.py` registers the workflows and activities that
-process Temporal tasks.
+`src/infrastructure/clients.py` manages the asynchronous Redis and Kafka clients for
+the FastAPI lifespan. It also connects FastAPI to Temporal Server and Firestore.
+`src/temporal/worker.py` registers the capability-specific workflows and
+activities under `src/temporal/workflows/` and `src/temporal/activities/`.
+`src/messaging/worker.py` consumes Kafka status events and signals the matching
+order workflow.
 
 ## Interactive API documentation
 

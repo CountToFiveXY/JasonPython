@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
-from infrastructure.clients import get_redis
+from src.infrastructure.clients import get_redis
 
 
 router = APIRouter(prefix="/health", tags=["Health"])

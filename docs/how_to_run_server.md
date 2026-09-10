@@ -1,8 +1,8 @@
 # How to Run the Server
 
 Follow this guide from the project root when setting up the application for the
-first time. The local environment includes Redis, Temporal Server, a Temporal
-worker, and FastAPI.
+first time. The local environment includes Redis, Kafka, a Kafka message worker,
+Temporal Server, a Temporal worker, and FastAPI.
 
 The order API also requires credentials for the `jasonapp-xm0830` Firebase
 project. Before starting locally, set `GOOGLE_APPLICATION_CREDENTIALS` to the
@@ -46,12 +46,13 @@ Run one command from the project root:
 
 Leave this terminal open. The script:
 
-1. Installs missing Homebrew dependencies.
+1. Installs missing Homebrew dependencies, including Kafka.
 2. Creates `.venv` and installs Python requirements when needed.
 3. Starts Redis, unless Redis is already running.
-4. Starts Temporal Server, unless it is already running.
-5. Starts the Python Temporal worker.
-6. Starts FastAPI on port 8000, falling back to 8088 and then 8888 when busy.
+4. Starts Kafka, creates the message topic, and starts its consumer worker.
+5. Starts Temporal Server, unless it is already running.
+6. Starts the Python Temporal worker.
+7. Starts FastAPI on port 8000, falling back to 8088 and then 8888 when busy.
 
 An existing Redis or Temporal Server instance is reused and will not be stopped
 by the script. By default, Redis saves its snapshot to the parent workspace at
@@ -88,6 +89,14 @@ Search for that ID in the Temporal Web UI to inspect its event history.
 Other available endpoints are documented in
 [How to call the API](how_to_call_api.md).
 
+Publish a Kafka message:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/messages \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"ORDER_ID_FROM_RESPONSE","status":"SUCCESS"}'
+```
+
 ## Stop the complete local environment
 
 Press `Control+C` in the terminal running `run_local.sh`. The script stops the
@@ -119,15 +128,18 @@ temporal server start-dev  # Start Temporal Server and its local Web UI.
 
 ```bash
 source .venv/bin/activate  # Make this terminal use the project's Python environment.
-python -m temporal.worker  # Poll for and execute Temporal workflow tasks.
+python -m src.temporal.worker  # Poll for and execute Temporal workflow tasks.
 ```
 
 ### Terminal 4: FastAPI
 
 ```bash
 source .venv/bin/activate  # Make this terminal use the project's Python environment.
-python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000  # Start the FastAPI development server.
+python -m uvicorn src.main:app --reload --host 0.0.0.0 --port 8000  # Start the FastAPI development server.
 ```
+
+Kafka must also be running on port `9092`, and the Kafka consumer can be run
+manually with `python -m src.messaging.worker`.
 
 See the [Temporal reference](depdency/temporal_reference.md) for namespace,
 address, and task-queue configuration.
@@ -142,6 +154,8 @@ address, and task-queue configuration.
 - `Error 61 connecting to 127.0.0.1:6379`: Redis is not running or is using a
   different address.
 - A connection error for `127.0.0.1:7233`: Temporal Server is not running.
+- A connection error for `127.0.0.1:9092`: Kafka is not running or the
+  configured broker address is incorrect.
 - A workflow request waits indefinitely: the Temporal worker is not running or
   its namespace or task queue does not match FastAPI.
 - `DefaultCredentialsError`: set `GOOGLE_APPLICATION_CREDENTIALS` to a valid

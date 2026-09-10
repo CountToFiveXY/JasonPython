@@ -10,9 +10,13 @@ requirements_stamp="$venv_dir/.requirements.sha256"
 api_port_file="$venv_dir/jasonapp-api-port"
 redis_data_dir="${REDIS_DATA_DIR:-$(dirname "$project_dir")/redis}"
 firebase_credentials_default="$HOME/.config/jasonapp/service-account.json"
+kafka_bootstrap_servers="${KAFKA_BOOTSTRAP_SERVERS:-127.0.0.1:9092}"
+kafka_topic="${KAFKA_TOPIC:-backend-messages}"
 redis_started=0
+kafka_started=0
 temporal_pid=""
 worker_pid=""
+kafka_worker_pid=""
 api_pid=""
 api_port=""
 
@@ -70,12 +74,16 @@ install_system_dependencies() {
     local formulas=()
 
     if ! command -v brew >/dev/null 2>&1; then
-        highlight_error "Homebrew is required to install Redis, Temporal, and Python dependencies."
+        highlight_error "Homebrew is required to install Redis, Kafka, Temporal, and Python dependencies."
         highlight_error "Install Homebrew from https://brew.sh, then run this script again."
         exit 1
     fi
     command -v redis-server >/dev/null 2>&1 || formulas+=(redis)
     command -v temporal >/dev/null 2>&1 || formulas+=(temporal)
+    if [[ "$kafka_bootstrap_servers" == "127.0.0.1:9092" ]] && \
+       ! command -v kafka-server-start >/dev/null 2>&1; then
+        formulas+=(kafka)
+    fi
     command -v python3 >/dev/null 2>&1 || formulas+=(python)
 
     if (( ${#formulas[@]} > 0 )); then
@@ -173,7 +181,7 @@ wait_for_port() {
 cleanup() {
     trap - EXIT INT TERM
 
-    for pid in "$api_pid" "$worker_pid" "$temporal_pid"; do
+    for pid in "$api_pid" "$kafka_worker_pid" "$worker_pid" "$temporal_pid"; do
         if [[ -n "$pid" ]] && kill -0 "$pid" >/dev/null 2>&1; then
             kill "$pid" >/dev/null 2>&1 || true
         fi
@@ -181,6 +189,10 @@ cleanup() {
 
     if [[ "$redis_started" -eq 1 ]]; then
         redis-cli shutdown >/dev/null 2>&1 || true
+    fi
+
+    if [[ "$kafka_started" -eq 1 ]]; then
+        brew services stop kafka >/dev/null 2>&1 || true
     fi
 
     rm -f "$api_port_file"
@@ -227,6 +239,25 @@ fi
 
 highlight "Redis snapshot: $redis_data_dir/dump.rdb"
 
+if [[ "$kafka_bootstrap_servers" == "127.0.0.1:9092" ]]; then
+    require_command kafka-topics
+    if nc -z 127.0.0.1 9092 >/dev/null 2>&1; then
+        highlight "Kafka is already running."
+    else
+        highlight "Starting Kafka..."
+        brew services start kafka
+        kafka_started=1
+        wait_for_port 127.0.0.1 9092 Kafka
+    fi
+    kafka-topics \
+        --bootstrap-server "$kafka_bootstrap_servers" \
+        --create \
+        --if-not-exists \
+        --topic "$kafka_topic"
+else
+    highlight "Using external Kafka broker: $kafka_bootstrap_servers"
+fi
+
 if nc -z 127.0.0.1 7233 >/dev/null 2>&1; then
     highlight "Temporal Server is already running."
 else
@@ -237,11 +268,15 @@ else
 fi
 
 highlight "Starting Temporal worker..."
-"$python_bin" -m temporal.worker &
+"$python_bin" -m src.temporal.worker &
 worker_pid=$!
 
+highlight "Starting Kafka message worker..."
+"$python_bin" -m src.messaging.worker &
+kafka_worker_pid=$!
+
 highlight "Starting FastAPI at http://127.0.0.1:$api_port..."
-"$python_bin" -m uvicorn main:app --reload --host 0.0.0.0 --port "$api_port" &
+"$python_bin" -m uvicorn src.main:app --reload --host 0.0.0.0 --port "$api_port" &
 api_pid=$!
 
 highlight_link "Temporal Web UI" "http://127.0.0.1:8233"

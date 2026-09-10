@@ -1,4 +1,4 @@
-# Temporal Workflow API
+# Hello Workflow API
 
 Starts the `HelloWorkflow` through FastAPI. Temporal records the workflow's
 event history, and the Temporal worker executes an activity that prints
@@ -44,7 +44,7 @@ the workflow's event history.
 
 ## Order workflow
 
-Creating an order starts `GreetingWorkflow` using the order UUID:
+Creating an order starts `OrderWorkflow` using the order UUID:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/order \
@@ -52,5 +52,7 @@ curl -X POST http://127.0.0.1:8000/v1/order \
   -d '{"user_id":"user-123"}'
 ```
 
-The workflow ID is the same as the order ID. The endpoint returns immediately
-after starting the workflow rather than waiting for its greeting result.
+The workflow ID is the same as the order ID. The endpoint returns immediately.
+The workflow creates a durable one-hour timer and waits for its `update_status`
+signal. The Kafka worker sends that signal after consuming `{id, status}` with
+`status` equal to `SUCCESS`; the workflow then runs `complete_order` and exits.

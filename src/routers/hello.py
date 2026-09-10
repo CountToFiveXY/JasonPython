@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from temporalio.client import Client
 
-from infrastructure.clients import get_temporal
-from temporal.workflows import HelloWorkflow
+from src.infrastructure.clients import get_temporal
+from src.temporal.workflows.hello import HelloWorkflow
 
 
 router = APIRouter(prefix="/workflows", tags=["Temporal Workflows"])

@@ -1,7 +1,14 @@
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from routers.order import ORDER_COLLECTION, OrderRequest, create_order
+from src.routers.order import (
+    ORDER_CLEANUP_WORKFLOW_SUFFIX,
+    ORDER_COLLECTION,
+    OrderRequest,
+    create_order,
+)
+from src.temporal.workflows.order import OrderWorkflow
+from src.temporal.workflows.order_cleanup import OrderCleanupWorkflow
 
 
 class FakeDocument:
@@ -38,7 +45,7 @@ class OrderTests(unittest.IsolatedAsyncioTestCase):
         temporal = AsyncMock()
 
         with patch(
-            "routers.order.uuid4",
+            "src.routers.order.uuid4",
             return_value="12345678-1234-1234-1234-123456789abc",
         ):
             result = await create_order(OrderRequest(user_id="user-123"), firestore, temporal)
@@ -46,16 +53,30 @@ class OrderTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(firestore.collection_name, ORDER_COLLECTION)
         self.assertEqual(firestore.collection_ref.document_id, result.id)
         stored_order = firestore.collection_ref.document_ref.created_data
-        self.assertEqual(set(stored_order), {"id", "user_id", "created"})
+        self.assertEqual(set(stored_order), {"id", "user_id", "created", "expires_at"})
         self.assertEqual(stored_order["id"], result.id)
         self.assertEqual(stored_order["user_id"], "user-123")
         self.assertEqual(result.user_id, "user-123")
         self.assertIsNotNone(stored_order["created"].tzinfo)
+        self.assertEqual(
+            (stored_order["expires_at"] - stored_order["created"]).total_seconds(),
+            86_400,
+        )
+        self.assertEqual(result.expires_at, stored_order["expires_at"])
         self.assertEqual(result.workflow_id, result.id)
-        temporal.start_workflow.assert_awaited_once()
-        _, workflow_order_id = temporal.start_workflow.await_args.args
+        self.assertEqual(temporal.start_workflow.await_count, 2)
+        order_call, cleanup_call = temporal.start_workflow.await_args_list
+        workflow_run, workflow_order_id = order_call.args
+        self.assertEqual(workflow_run, OrderWorkflow.run)
         self.assertEqual(workflow_order_id, result.id)
-        self.assertEqual(temporal.start_workflow.await_args.kwargs["id"], result.id)
+        self.assertEqual(order_call.kwargs["id"], result.id)
+        cleanup_run, cleanup_order_id = cleanup_call.args
+        self.assertEqual(cleanup_run, OrderCleanupWorkflow.run)
+        self.assertEqual(cleanup_order_id, result.id)
+        self.assertEqual(
+            cleanup_call.kwargs["id"],
+            f"{result.id}{ORDER_CLEANUP_WORKFLOW_SUFFIX}",
+        )
 
 
 if __name__ == "__main__":
