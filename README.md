@@ -2,9 +2,10 @@
 
 A small FastAPI project containing utility APIs for URL shortening, image
 responses (including a generated participant card), health checks, and Temporal
-workflows. The order API persists orders to Cloud Firestore before starting a
-workflow with the same ID. The workflow waits up to one hour for a success
-event published to Kafka, then runs its completion activity.
+workflows. The order API starts a workflow with the order ID, and that workflow
+persists the order to Cloud Firestore through a reusable activity. It then waits
+up to one hour for a success event published to Kafka before running its
+completion activity.
 
 All endpoints run from one application and are organized with `APIRouter`.
 Redis stores URL-to-code mappings so generated short URLs can be resolved.

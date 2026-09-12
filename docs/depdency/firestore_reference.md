@@ -1,7 +1,8 @@
 # Firestore Reference
 
-The order API writes to the `orders` collection in the `jasonapp-xm0830`
-Firebase project by default.
+The order workflow writes to the `orders` collection in the `jasonapp-xm0830`
+Firebase project by default through the reusable `write_firestore_document`
+activity.
 
 ## Local authentication
 
@@ -26,7 +27,7 @@ account instead of a downloaded key.
 | `FIRESTORE_ORDER_COLLECTION` | `orders` | Collection containing order documents |
 
 The service account needs permission to create documents in Cloud Firestore.
-Order documents use the `expires_at` timestamp for automatic cleanup. A
-dedicated Temporal cleanup workflow deletes each document after 24 hours. A
-native Firestore TTL policy on the `orders` collection group's `expires_at`
-field can also be enabled when the project administrator grants permission.
+Order documents use the `expires_at` timestamp for automatic cleanup. A native
+Firestore TTL policy on the `orders` collection group's `expires_at`
+field is the sole deletion mechanism; Firestore schedules removal after the
+stored expiration time.

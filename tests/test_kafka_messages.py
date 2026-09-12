@@ -5,6 +5,7 @@ from src.messaging.config import KAFKA_TOPIC
 from src.messaging.events import OrderStatusEvent
 from src.messaging.worker import handle_message
 from src.routers.messages import publish_message
+from src.services import MessageService
 from src.temporal.workflows.order import OrderWorkflow
 
 
@@ -43,7 +44,7 @@ class MessageTests(unittest.IsolatedAsyncioTestCase):
                 id="12345678-1234-1234-1234-123456789abc",
                 status="SUCCESS",
             ),
-            producer,
+            MessageService(producer),
         )
 
         self.assertEqual(response.id, "12345678-1234-1234-1234-123456789abc")

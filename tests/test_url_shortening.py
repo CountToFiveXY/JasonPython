@@ -1,11 +1,11 @@
 import unittest
 from unittest.mock import patch
 
-from src.routers.url_shortening import (
+from src.routers.url_shortening import redirect_short_url, shorten_url
+from src.schemas import ShortenRequest
+from src.services import UrlShorteningService
+from src.services.url_shortening import (
     REDIS_KEY_PREFIX,
-    ShortenRequest,
-    redirect_short_url,
-    shorten_url,
 )
 from fastapi import HTTPException
 
@@ -35,9 +35,9 @@ class UrlShorteningTests(unittest.IsolatedAsyncioTestCase):
     async def test_stores_generated_code(self) -> None:
         redis = FakeRedis()
 
-        with patch("src.routers.url_shortening.generate_short_code", return_value="Ab12Cd34"):
+        with patch("src.services.url_shortening.generate_short_code", return_value="Ab12Cd34"):
             request = ShortenRequest(url="https://example.com/long")
-            result = await shorten_url(request, redis)
+            result = await shorten_url(request, UrlShorteningService(redis))
 
         self.assertEqual(result.short_url, "go/Ab12Cd34")
         self.assertEqual(
@@ -51,11 +51,11 @@ class UrlShorteningTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with patch(
-            "src.routers.url_shortening.generate_short_code",
+            "src.services.url_shortening.generate_short_code",
             side_effect=["Ab12Cd34", "Zx98Yw76"],
         ):
             request = ShortenRequest(url="https://second.example.com/")
-            result = await shorten_url(request, redis)
+            result = await shorten_url(request, UrlShorteningService(redis))
 
         self.assertEqual(result.short_url, "go/Zx98Yw76")
         self.assertEqual(
@@ -71,7 +71,7 @@ class UrlShorteningTests(unittest.IsolatedAsyncioTestCase):
         redis = FakeRedis()
 
         with self.assertRaises(HTTPException) as raised:
-            await redirect_short_url("bad", redis)
+            await redirect_short_url("bad", UrlShorteningService(redis))
 
         self.assertEqual(raised.exception.status_code, 400)
         self.assertEqual(redis.get_calls, [])
@@ -80,7 +80,7 @@ class UrlShorteningTests(unittest.IsolatedAsyncioTestCase):
         redis = FakeRedis()
 
         with self.assertRaises(HTTPException) as raised:
-            await redirect_short_url("Ab12Cd34", redis)
+            await redirect_short_url("Ab12Cd34", UrlShorteningService(redis))
 
         self.assertEqual(raised.exception.status_code, 404)
 
@@ -88,7 +88,9 @@ class UrlShorteningTests(unittest.IsolatedAsyncioTestCase):
         original_url = "https://example.com/a/long/path"
         redis = FakeRedis({f"{REDIS_KEY_PREFIX}Ab12Cd34": original_url})
 
-        response = await redirect_short_url("Ab12Cd34", redis)
+        response = await redirect_short_url(
+            "Ab12Cd34", UrlShorteningService(redis)
+        )
         body = response.body.decode("utf-8")
 
         self.assertEqual(response.status_code, 200)

@@ -1,6 +1,8 @@
 # Ranking Image API
 
 `POST /v1/ranking` renders a 304 × 506 PNG image.
+The HTTP router validates the request and delegates rendering to the stateless
+`RankingService`.
 
 ## Request
 

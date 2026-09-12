@@ -5,10 +5,9 @@ from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageDraw
 
-from src.routers.ranking import (
-    CardType,
+from src.entity import CardType
+from src.services.ranking import (
     PERCENTAGES,
-    RankingRequest,
     _fitted_font,
     ranking_count,
     render_ranking,
@@ -28,7 +27,9 @@ class RankingTests(unittest.TestCase):
 
     def test_renderer_returns_reference_sized_png(self) -> None:
         png = render_ranking(
-            RankingRequest(total=28_916, type=CardType.CH, car="Galaxy"),
+            28_916,
+            CardType.CH,
+            "Galaxy",
             generated_at=datetime(2026, 8, 23, 3, 11, tzinfo=ZoneInfo("America/Los_Angeles")),
         )
         image = Image.open(BytesIO(png))
@@ -51,7 +52,9 @@ class RankingTests(unittest.TestCase):
 
     def test_renderer_accepts_simplified_chinese_car_name(self) -> None:
         png = render_ranking(
-            RankingRequest(total=100, type=CardType.SE, car="银河之光"),
+            100,
+            CardType.SE,
+            "银河之光",
             generated_at=datetime(2026, 8, 29, 12, 0, tzinfo=ZoneInfo("America/Los_Angeles")),
         )
         image = Image.open(BytesIO(png))

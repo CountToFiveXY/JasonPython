@@ -1,31 +1,21 @@
-import os
-from uuid import uuid4
+"""Hello workflow HTTP endpoint."""
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
-from temporalio.client import Client
 
-from src.infrastructure.clients import get_temporal
-from src.temporal.workflows.hello import HelloWorkflow
+from src.dependencies import get_hello_service
+from src.schemas import WorkflowResponse
+from src.services import HelloService
 
 
 router = APIRouter(prefix="/workflows", tags=["Temporal Workflows"])
-TEMPORAL_TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "utility-api")
-
-
-class WorkflowResponse(BaseModel):
-    workflow_id: str
-    result: str
 
 
 @router.post("/hello", response_model=WorkflowResponse)
 async def run_hello(
-    temporal_client: Client = Depends(get_temporal),
+    service: HelloService = Depends(get_hello_service),
 ) -> WorkflowResponse:
-    workflow_id = f"hello-{uuid4()}"
-    result = await temporal_client.execute_workflow(
-        HelloWorkflow.run,
-        id=workflow_id,
-        task_queue=TEMPORAL_TASK_QUEUE,
+    execution = await service.run()
+    return WorkflowResponse(
+        workflow_id=execution.workflow_id,
+        result=execution.result,
     )
-    return WorkflowResponse(workflow_id=workflow_id, result=result)

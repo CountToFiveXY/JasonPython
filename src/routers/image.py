@@ -1,13 +1,17 @@
-from pathlib import Path
+"""Static image HTTP endpoint."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
+
+from src.dependencies import get_image_service
+from src.services import ImageService
 
 
 router = APIRouter(prefix="/display", tags=["Images"])
-IMAGE_PATH = Path(__file__).resolve().parents[2] / "assets" / "metroidzm_map.jpg"
 
 
 @router.get("")
-def get_image() -> FileResponse:
-    return FileResponse(IMAGE_PATH, media_type="image/jpeg")
+def get_image(
+    service: ImageService = Depends(get_image_service),
+) -> FileResponse:
+    return FileResponse(service.get_display_image(), media_type="image/jpeg")

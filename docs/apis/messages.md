@@ -4,6 +4,9 @@
 the broker acknowledges the record. A `SUCCESS` event signals the Temporal
 workflow whose workflow ID matches `id`.
 
+The HTTP router delegates publishing to `MessageService`, which owns the Kafka
+topic, message key, serialization, and acknowledgement handling.
+
 ## Request
 
 ```bash

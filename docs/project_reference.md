@@ -7,9 +7,31 @@
 ├── src/
 │   ├── __init__.py
 │   ├── main.py
+│   ├── dependencies.py
+│   ├── entity/
+│   │   ├── __init__.py
+│   │   ├── order.py
+│   │   └── ranking.py
 │   ├── infrastructure/
 │   │   ├── __init__.py
 │   │   └── clients.py
+│   ├── schemas/
+│   │   ├── __init__.py
+│   │   ├── health.py
+│   │   ├── hello.py
+│   │   ├── messages.py
+│   │   ├── order.py
+│   │   ├── ranking.py
+│   │   └── url_shortening.py
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── health.py
+│   │   ├── hello.py
+│   │   ├── image.py
+│   │   ├── messages.py
+│   │   ├── order.py
+│   │   ├── ranking.py
+│   │   └── url_shortening.py
 │   ├── routers/
 │   │   ├── __init__.py
 │   │   ├── url_shortening.py
@@ -24,16 +46,15 @@
 │   │   ├── worker.py
 │   │   ├── activities/
 │   │   │   ├── __init__.py
+│   │   │   ├── firestore.py
 │   │   │   ├── greeting.py
 │   │   │   ├── hello.py
-│   │   │   ├── order.py
-│   │   │   └── order_cleanup.py
+│   │   │   └── order.py
 │   │   └── workflows/
 │   │       ├── __init__.py
 │   │       ├── greeting.py
 │   │       ├── hello.py
-│   │       ├── order.py
-│   │       └── order_cleanup.py
+│   │       └── order.py
 │   └── messaging/
 │       ├── __init__.py
 │       ├── config.py
@@ -81,6 +102,13 @@
 
 The FastAPI application is defined in `src/main.py`. Each API is implemented in
 a separate module under `src/routers/` and registered with `app.include_router()`.
+Persistent domain models live under `src/entity/`. HTTP request and response
+schemas live under `src/schemas/`, messaging contracts remain under
+`src/messaging/`, and Temporal input models remain beside their consumers.
+Application use cases live under `src/services/`; routers receive these services
+through providers in `src/dependencies.py` rather than depending directly on
+infrastructure clients. Routers are responsible for HTTP validation, response
+formatting, and translating service errors into HTTP status codes.
 Python's `secrets` module generates eight random letters and digits. Redis
 stores each code-to-URL mapping with an atomic `SET ... NX` command so an
 existing code cannot be overwritten.

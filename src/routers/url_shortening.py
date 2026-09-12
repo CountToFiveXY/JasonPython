@@ -1,66 +1,23 @@
 import html
 import json
-import secrets
-import string
-from typing import Annotated
-from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field, HttpUrl
-from redis.asyncio import Redis
 
-from src.infrastructure.clients import get_redis
+from src.dependencies import get_url_shortening_service
+from src.schemas import ShortenRequest, ShortenResponse, ShortKey
+from src.services import UrlShorteningService
+from src.services.url_shortening import (
+    InvalidShortCodeError,
+    InvalidStoredUrlError,
+    ShortCodeGenerationError,
+    ShortUrlNotFoundError,
+)
 
 
 router = APIRouter(tags=["URL Shortening"])
 
-SHORT_CODE_ALPHABET = string.ascii_letters + string.digits
-SHORT_CODE_LENGTH = 8
-MAX_GENERATION_ATTEMPTS = 5
-REDIS_KEY_PREFIX = "short_url:"
-
-ShortKey = Annotated[
-    str,
-    Path(
-        min_length=SHORT_CODE_LENGTH,
-        max_length=SHORT_CODE_LENGTH,
-        pattern=r"^[0-9A-Za-z]{8}$",
-        alias="shortKey",
-        description="Eight-character short key",
-    ),
-]
-
-
-class ShortenRequest(BaseModel):
-    url: HttpUrl
-
-
-class ShortenResponse(BaseModel):
-    short_url: str = Field(serialization_alias="shortUrl")
-
-
-def generate_short_code() -> str:
-    return "".join(
-        secrets.choice(SHORT_CODE_ALPHABET) for _ in range(SHORT_CODE_LENGTH)
-    )
-
-
-def validate_short_code(code: str) -> None:
-    if len(code) != SHORT_CODE_LENGTH or any(
-        character not in SHORT_CODE_ALPHABET for character in code
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="Short code must contain exactly eight letters or digits",
-        )
-
-
 def build_redirect_page(original_url: str) -> str:
-    parsed_url = urlsplit(original_url)
-    if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
-        raise HTTPException(status_code=422, detail="Stored URL is not redirectable")
-
     safe_link = html.escape(original_url, quote=True)
     javascript_url = (
         json.dumps(original_url)
@@ -89,30 +46,26 @@ if (newTab) {{
 @router.post("/v1/shorten", response_model=ShortenResponse)
 async def shorten_url(
     request: ShortenRequest,
-    redis_client: Redis = Depends(get_redis),
+    service: UrlShorteningService = Depends(get_url_shortening_service),
 ) -> ShortenResponse:
-    url = str(request.url)
-
-    for _ in range(MAX_GENERATION_ATTEMPTS):
-        code = generate_short_code()
-        was_created = await redis_client.set(
-            f"{REDIS_KEY_PREFIX}{code}",
-            url,
-            nx=True,
-        )
-        if was_created:
-            return ShortenResponse(short_url=f"go/{code}")
-
-    raise HTTPException(status_code=503, detail="Could not generate a unique code")
+    try:
+        short_url = await service.shorten(str(request.url))
+    except ShortCodeGenerationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return ShortenResponse(short_url=short_url)
 
 
 @router.get("/go/{shortKey}", response_class=HTMLResponse)
 async def redirect_short_url(
     short_key: ShortKey,
-    redis_client: Redis = Depends(get_redis),
+    service: UrlShorteningService = Depends(get_url_shortening_service),
 ) -> HTMLResponse:
-    validate_short_code(short_key)
-    original_url = await redis_client.get(f"{REDIS_KEY_PREFIX}{short_key}")
-    if original_url is None:
-        raise HTTPException(status_code=404, detail="Short URL not found")
+    try:
+        original_url = await service.resolve(short_key)
+    except InvalidShortCodeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ShortUrlNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvalidStoredUrlError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return HTMLResponse(build_redirect_page(original_url))

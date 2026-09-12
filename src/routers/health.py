@@ -1,39 +1,22 @@
-import asyncio
+"""Health-check HTTP endpoint."""
 
-from aiokafka import AIOKafkaProducer
-from aiokafka.errors import KafkaError
 from fastapi import APIRouter, Depends, HTTPException
-from redis.asyncio import Redis
-from redis.exceptions import RedisError
 
-from src.infrastructure.clients import get_kafka_producer, get_redis
+from src.dependencies import get_health_service
+from src.schemas import HealthResponse
+from src.services import HealthService
+from src.services.health import RedisUnavailableError
 
 
 router = APIRouter(prefix="/health", tags=["Health"])
 
 
-@router.get("")
+@router.get("", response_model=HealthResponse)
 async def health_check(
-    redis_client: Redis = Depends(get_redis),
-    kafka_producer: AIOKafkaProducer = Depends(get_kafka_producer),
-) -> dict[str, str]:
+    service: HealthService = Depends(get_health_service),
+) -> HealthResponse:
     try:
-        await redis_client.ping()
-    except RedisError as error:
-        raise HTTPException(status_code=503, detail="Redis is unavailable") from error
-
-    try:
-        metadata_updated = await asyncio.wait_for(
-            kafka_producer.client.force_metadata_update(),
-            timeout=3,
-        )
-    except (TimeoutError, KafkaError, OSError):
-        metadata_updated = False
-
-    kafka_status = "connected" if metadata_updated else "unavailable"
-    application_status = "OK" if metadata_updated else "DEGRADED"
-    return {
-        "status": application_status,
-        "redis": "connected",
-        "kafka": kafka_status,
-    }
+        result = await service.check()
+    except RedisUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return HealthResponse(**result)

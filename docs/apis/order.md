@@ -1,7 +1,7 @@
 # Order API
 
-`POST /v1/order` creates an order in Cloud Firestore and starts a Temporal
-`OrderWorkflow`. A user ID is required.
+`POST /v1/order` starts a Temporal `OrderWorkflow`. The workflow writes the
+order to Cloud Firestore through a reusable activity. A user ID is required.
 
 ## Request
 
@@ -25,11 +25,18 @@ The endpoint responds with HTTP `201 Created`:
 }
 ```
 
-The `orders/{id}` Firestore document contains `id`, `user_id`, `created`, and
-`expires_at`. The expiration timestamp is exactly 24 hours after creation, and
-an `OrderCleanupWorkflow` waits until that age and deletes the document. A
-native Firestore TTL policy on `orders.expires_at` can also be enabled as a
-second cleanup mechanism.
+The endpoint constructs the persistent `Order` model defined in
+`src/entity/order.py`. Its HTTP `OrderRequest` and `OrderResponse` contracts are
+defined separately in `src/schemas/order.py`. The router delegates creation to
+`OrderService` in `src/services/order.py`, which constructs the entity and passes
+its serialized fields to Temporal. The workflow
+calls `write_firestore_document` to write the `orders/{id}` document with `id`,
+`user_id`, `created`, and `expires_at`. The generic activity
+uses an idempotent write so Temporal retries are safe and other workflows can
+reuse it. The expiration timestamp is exactly 24 hours after creation, and an
+enabled Firestore TTL policy on `orders.expires_at` deletes expired documents.
+Deletion scheduling is managed entirely by Firestore; no Temporal cleanup
+workflow is started.
 The UUID is used as both the Firestore document ID and Temporal workflow ID.
 The API starts the workflow but does not wait for it to finish. The workflow
 waits for up to one hour for a `SUCCESS` signal. A matching Kafka message causes

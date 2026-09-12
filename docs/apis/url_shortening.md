@@ -3,6 +3,9 @@
 Returns a short redirect path for a URL. The path uses the format
 `go/<eight-character-code>`.
 
+The HTTP router delegates code generation, Redis storage, validation, and lookup
+to `UrlShorteningService`. It translates service failures into HTTP responses.
+
 ## Request
 
 ```text
