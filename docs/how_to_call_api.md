@@ -9,6 +9,7 @@ Each endpoint has its own guide:
 - [Ranking image API](apis/ranking.md)
 - [Order API](apis/order.md)
 - [Messages API](apis/messages.md)
+- [Leaderboard API](apis/leaderboard.md)
 - [Health check API](apis/health.md)
 - [Hello workflow API](apis/hello.md)
 

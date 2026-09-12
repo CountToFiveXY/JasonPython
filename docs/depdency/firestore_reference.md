@@ -2,7 +2,8 @@
 
 The order workflow writes to the `orders` collection in the `jasonapp-xm0830`
 Firebase project by default through the reusable `write_firestore_document`
-activity.
+activity. The [leaderboard API](../apis/leaderboard.md) stores maps, tracks,
+and lap times in the `maps` collection of the same project.
 
 ## Local authentication
 
@@ -25,6 +26,7 @@ account instead of a downloaded key.
 | --- | --- | --- |
 | `FIREBASE_PROJECT_ID` | `jasonapp-xm0830` | Firebase project receiving orders |
 | `FIRESTORE_ORDER_COLLECTION` | `orders` | Collection containing order documents |
+| `FIRESTORE_MAP_COLLECTION` | `maps` | Collection containing leaderboard maps |
 
 The service account needs permission to create documents in Cloud Firestore.
 Order documents use the `expires_at` timestamp for automatic cleanup. A native

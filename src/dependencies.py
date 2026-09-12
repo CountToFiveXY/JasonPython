@@ -2,14 +2,21 @@
 
 from fastapi import Depends
 from aiokafka import AIOKafkaProducer
+from google.cloud.firestore_v1 import Client as FirestoreClient
 from redis.asyncio import Redis
 from temporalio.client import Client as TemporalClient
 
-from src.infrastructure.clients import get_kafka_producer, get_redis, get_temporal
+from src.infrastructure.clients import (
+    get_firestore,
+    get_kafka_producer,
+    get_redis,
+    get_temporal,
+)
 from src.services import (
     HealthService,
     HelloService,
     ImageService,
+    LeaderboardService,
     MessageService,
     OrderService,
     RankingService,
@@ -38,6 +45,14 @@ def get_image_service() -> ImageService:
     """Build the stateless image service."""
 
     return ImageService()
+
+
+def get_leaderboard_service(
+    firestore_client: FirestoreClient = Depends(get_firestore),
+) -> LeaderboardService:
+    """Build a leaderboard service around the shared Firestore client."""
+
+    return LeaderboardService(firestore_client)
 
 
 def get_message_service(

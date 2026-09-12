@@ -10,6 +10,7 @@
 │   ├── dependencies.py
 │   ├── entity/
 │   │   ├── __init__.py
+│   │   ├── leaderboard.py
 │   │   ├── order.py
 │   │   └── ranking.py
 │   ├── infrastructure/
@@ -19,6 +20,7 @@
 │   │   ├── __init__.py
 │   │   ├── health.py
 │   │   ├── hello.py
+│   │   ├── leaderboard.py
 │   │   ├── messages.py
 │   │   ├── order.py
 │   │   ├── ranking.py
@@ -28,6 +30,7 @@
 │   │   ├── health.py
 │   │   ├── hello.py
 │   │   ├── image.py
+│   │   ├── leaderboard.py
 │   │   ├── messages.py
 │   │   ├── order.py
 │   │   ├── ranking.py
@@ -36,6 +39,7 @@
 │   │   ├── __init__.py
 │   │   ├── url_shortening.py
 │   │   ├── image.py
+│   │   ├── leaderboard.py
 │   │   ├── messages.py
 │   │   ├── ranking.py
 │   │   ├── health.py
@@ -76,6 +80,7 @@
     ├── how_to_call_api.md
     ├── project_reference.md
     └── apis/
+        ├── leaderboard.md
         ├── ranking.md
         ├── order.md
         ├── messages.md
@@ -97,6 +102,12 @@
 | `POST` | `/workflows/hello` | None | Starts `HelloWorkflow` and returns its result. | [Guide](apis/hello.md) |
 | `POST` | `/v1/order` | JSON `user_id` field | Creates an order and starts a signal-waiting `OrderWorkflow`. | [Guide](apis/order.md) |
 | `POST` | `/v1/messages` | JSON `id` and `status` fields | Publishes an order status for the Kafka worker. | [Guide](apis/messages.md) |
+| `GET` | `/v1/leaderboard/maps` | None | Lists the maps, ordered by name. | [Guide](apis/leaderboard.md) |
+| `GET` | `/v1/leaderboard/cars` | None | Lists every car holding a time, for the car selector. | [Guide](apis/leaderboard.md) |
+| `POST` | `/v1/leaderboard/maps` | JSON `name` and two `tracks` names | Creates a map and its fixed pair of tracks. | [Guide](apis/leaderboard.md) |
+| `GET` | `/v1/leaderboard/maps/{map_id}` | Map identifier | Returns each track's five fastest cars. | [Guide](apis/leaderboard.md) |
+| `PUT` | `/v1/leaderboard/maps/{map_id}/tracks/{track_id}/times` | JSON `car` and `seconds` fields | Replaces a car's time on a track. | [Guide](apis/leaderboard.md) |
+| `DELETE` | `/v1/leaderboard/maps/{map_id}/tracks/{track_id}/times/{car}` | Map, track, and car | Removes a car's time from a track. | [Guide](apis/leaderboard.md) |
 
 ## Implementation
 
@@ -117,7 +128,9 @@ the FastAPI lifespan. It also connects FastAPI to Temporal Server and Firestore.
 `src/temporal/worker.py` registers the capability-specific workflows and
 activities under `src/temporal/workflows/` and `src/temporal/activities/`.
 `src/messaging/worker.py` consumes Kafka status events and signals the matching
-order workflow.
+order workflow. The leaderboard API is the one feature that reads and writes
+Firestore directly from a request: `LeaderboardService` receives the client
+from `get_firestore` and runs the blocking Firestore calls on worker threads.
 
 ## Interactive API documentation
 
