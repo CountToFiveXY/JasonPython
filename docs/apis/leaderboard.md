@@ -93,7 +93,8 @@ blank `chinese_name` and no release order.
 curl http://127.0.0.1:8000/v1/leaderboard/maps/new-york
 ```
 
-Each track lists its five fastest cars, ranked from one:
+Each track lists every car that holds a time on it, fastest first and
+ranked from one:
 
 ```json
 {
@@ -140,6 +141,30 @@ curl -X DELETE \
 The response is the track's refreshed leaderboard. A car with no time on the
 track responds with HTTP `404 Not Found`.
 
+## Caching
+
+Reading a map costs four Firestore round trips, so `GET` results are cached in
+Redis under `leaderboard:maps`, `leaderboard:cars`, and
+`leaderboard:map:{map_id}`. A warm read is roughly a thousand times faster than
+a cold one.
+
+Writes through this API clear the keys they affect. That alone is not enough,
+because maps and tracks are also edited directly in the Firebase console, and
+those edits never reach this API. So the cache is kept honest by change data
+capture: `LeaderboardCacheWatcher` in `src/infrastructure/cache_watcher.py`
+subscribes to Firestore itself — the `maps` collection and the `tracks` and
+`times` collection groups — and clears the keys a changed document makes stale,
+whoever wrote it. A console edit reaches the app in about a tenth of a second.
+
+The listener runs inside the API process rather than as a Cloud Function
+trigger, because a function running in Google's cloud cannot reach a Redis
+listening on `127.0.0.1`.
+
+`LEADERBOARD_CACHE_TTL_SECONDS` (default 300) is the backstop for anything the
+listener misses, such as changes made while the API is stopped. Without
+Firestore credentials the API still starts, and the cache falls back to
+expiring on that TTL alone.
+
 ## Storage layout
 
 ```text
@@ -153,8 +178,8 @@ The map document carries both tracks so one read renders the whole selector and
 both leaderboards. That array fixes which tracks a map has and the order they
 appear in; each track's own document owns its `name` and `chinese_name`, so
 there is one obvious place to edit them and no duplicated value to drift. A
-detail missing from the track document falls back to the array. Each track's times are a subcollection, so a track's top five
-is a single ordered query and one car's time can be replaced or deleted without
+detail missing from the track document falls back to the array. Each track's times are a subcollection, so a track's times
+are a single ordered query and one car's time can be replaced or deleted without
 rewriting the others. Creating a map writes the map and its two track documents
 in one batch, which also makes the duplicate-name check atomic.
 

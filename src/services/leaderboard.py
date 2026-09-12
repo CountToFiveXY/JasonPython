@@ -18,10 +18,41 @@ from src.entity import GameMap, LapTime, Track
 MAP_COLLECTION = os.getenv("FIRESTORE_MAP_COLLECTION", "maps")
 TRACK_COLLECTION = "tracks"
 LAP_TIME_COLLECTION = "times"
-TOP_LAP_TIMES = 5
 LEADERBOARD_CACHE_TTL_SECONDS = int(os.getenv("LEADERBOARD_CACHE_TTL_SECONDS", "300"))
 MAPS_CACHE_KEY = "leaderboard:maps"
 CARS_CACHE_KEY = "leaderboard:cars"
+
+
+def map_cache_key(map_id: str) -> str:
+    return f"leaderboard:map:{map_id}"
+
+
+def cache_keys_for_path(path: str) -> list[str]:
+    """The cache keys a changed Firestore document makes stale.
+
+    ``maps/new-york``                          the map list, and that map
+    ``maps/new-york/tracks/the-tunnel``        that map
+    ``maps/new-york/tracks/the-tunnel/times/c2``  that map, and the car roster
+
+    Anything else belongs to another feature and invalidates nothing.
+    """
+
+    parts = path.strip("/").split("/")
+    if len(parts) < 2 or parts[0] != MAP_COLLECTION:
+        return []
+
+    map_id = parts[1]
+    if len(parts) == 2:
+        return [MAPS_CACHE_KEY, map_cache_key(map_id)]
+    if len(parts) == 4 and parts[2] == TRACK_COLLECTION:
+        return [map_cache_key(map_id)]
+    if (
+        len(parts) == 6
+        and parts[2] == TRACK_COLLECTION
+        and parts[4] == LAP_TIME_COLLECTION
+    ):
+        return [map_cache_key(map_id), CARS_CACHE_KEY]
+    return []
 
 
 class InvalidNameError(ValueError):
@@ -196,7 +227,7 @@ class LeaderboardService:
 
         game_map = await self._read_map(map_id)
         results = await asyncio.gather(
-            *(self._top_times(map_id, track.id) for track in game_map.tracks)
+            *(self._ranked_times(map_id, track.id) for track in game_map.tracks)
         )
         result = MapTimes(
             game_map=game_map,
@@ -233,7 +264,7 @@ class LeaderboardService:
             lap_time.model_dump(),
         )
         await self._invalidate_cache(self._map_cache_key(map_id), CARS_CACHE_KEY)
-        return TrackTimes(track=track, times=await self._top_times(map_id, track_id))
+        return TrackTimes(track=track, times=await self._ranked_times(map_id, track_id))
 
     async def delete_lap_time(self, map_id: str, track_id: str, car: str) -> TrackTimes:
         track = self._track(await self._read_map(map_id), track_id)
@@ -246,11 +277,11 @@ class LeaderboardService:
         await asyncio.to_thread(document.delete)
 
         await self._invalidate_cache(self._map_cache_key(map_id), CARS_CACHE_KEY)
-        return TrackTimes(track=track, times=await self._top_times(map_id, track_id))
+        return TrackTimes(track=track, times=await self._ranked_times(map_id, track_id))
 
     @staticmethod
     def _map_cache_key(map_id: str) -> str:
-        return f"leaderboard:map:{map_id}"
+        return map_cache_key(map_id)
 
     async def _read_cache(self, key: str):
         if self._redis is None:
@@ -338,12 +369,13 @@ class LeaderboardService:
             f"Map '{game_map.id}' has no track '{track_id}'"
         )
 
-    async def _top_times(self, map_id: str, track_id: str) -> list[LapTime]:
+    async def _ranked_times(self, map_id: str, track_id: str) -> list[LapTime]:
+        """Every time recorded on a track, fastest first."""
+
         documents = await asyncio.to_thread(
             lambda: list(
                 self._times(map_id, track_id)
                 .order_by("seconds")
-                .limit(TOP_LAP_TIMES)
                 .stream()
             )
         )

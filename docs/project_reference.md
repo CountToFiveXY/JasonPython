@@ -15,6 +15,7 @@
 │   │   └── ranking.py
 │   ├── infrastructure/
 │   │   ├── __init__.py
+│   │   ├── cache_watcher.py
 │   │   └── clients.py
 │   ├── schemas/
 │   │   ├── __init__.py
@@ -105,7 +106,7 @@
 | `GET` | `/v1/leaderboard/maps` | None | Lists the maps, ordered by name. | [Guide](apis/leaderboard.md) |
 | `GET` | `/v1/leaderboard/cars` | None | Lists every car holding a time, for the car selector. | [Guide](apis/leaderboard.md) |
 | `POST` | `/v1/leaderboard/maps` | JSON `name` and two `tracks` names | Creates a map and its fixed pair of tracks. | [Guide](apis/leaderboard.md) |
-| `GET` | `/v1/leaderboard/maps/{map_id}` | Map identifier | Returns each track's five fastest cars. | [Guide](apis/leaderboard.md) |
+| `GET` | `/v1/leaderboard/maps/{map_id}` | Map identifier | Returns every recorded time on each track, fastest first. | [Guide](apis/leaderboard.md) |
 | `PUT` | `/v1/leaderboard/maps/{map_id}/tracks/{track_id}/times` | JSON `car` and `seconds` fields | Replaces a car's time on a track. | [Guide](apis/leaderboard.md) |
 | `DELETE` | `/v1/leaderboard/maps/{map_id}/tracks/{track_id}/times/{car}` | Map, track, and car | Removes a car's time from a track. | [Guide](apis/leaderboard.md) |
 
@@ -124,7 +125,9 @@ Python's `secrets` module generates eight random letters and digits. Redis
 stores each code-to-URL mapping with an atomic `SET ... NX` command so an
 existing code cannot be overwritten.
 `src/infrastructure/clients.py` manages the asynchronous Redis and Kafka clients for
-the FastAPI lifespan. It also connects FastAPI to Temporal Server and Firestore.
+the FastAPI lifespan. It also connects FastAPI to Temporal Server and Firestore,
+and starts `src/infrastructure/cache_watcher.py`, which listens to Firestore and
+clears cached leaderboard reads when their documents change.
 `src/temporal/worker.py` registers the capability-specific workflows and
 activities under `src/temporal/workflows/` and `src/temporal/activities/`.
 `src/messaging/worker.py` consumes Kafka status events and signals the matching

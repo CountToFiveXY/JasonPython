@@ -326,7 +326,7 @@ class LeaderboardServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual([(time.car, time.seconds) for time in result.times], [("c2", 21.4)])
 
-    async def test_returns_only_the_five_fastest_cars(self) -> None:
+    async def test_returns_every_recorded_car_fastest_first(self) -> None:
         await self.new_york()
         for position, seconds in enumerate([25.0, 19.62, 31.5, 22.25, 20.1, 28.0, 19.7]):
             await self.service.record_lap_time(
@@ -339,7 +339,7 @@ class LeaderboardServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             [time.seconds for time in result.times],
-            [18.05, 19.62, 19.7, 20.1, 22.25],
+            [18.05, 19.62, 19.7, 20.1, 22.25, 25.0, 28.0, 31.5],
         )
 
     async def test_keeps_each_tracks_times_separate(self) -> None:
