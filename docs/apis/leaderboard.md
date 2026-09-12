@@ -73,10 +73,19 @@ curl http://127.0.0.1:8000/v1/leaderboard/maps
 ```
 
 ```json
-{"maps": [{"id": "new-york", "name": "New York"}]}
+{"maps": [{"id": "san-francisco", "name": "San Francisco", "chinese_name": "旧金山"}]}
 ```
 
-Maps are ordered by name, which is the order the JasonApp map selector shows.
+Maps are listed in the game's release order, which is the order the JasonApp
+map selector shows them in. That order is the `release_order` field on each map
+document; a map without one sorts after every map that has one, by name. The
+sort runs in the service rather than as a Firestore `order_by`, because an
+`order_by` silently drops documents that lack the field.
+
+`chinese_name` is the map's Chinese name, which JasonApp appends to the English
+one — `San Francisco (旧金山)`. Tracks carry the same field; it is blank until
+filled in. Both are optional, and a map created through this API starts with a
+blank `chinese_name` and no release order.
 
 ## Read a map's leaderboards
 
@@ -95,8 +104,8 @@ Each track lists its five fastest cars, ranked from one:
       "id": "a-park-in-a-run",
       "name": "A park In A run",
       "times": [
-        {"car": "C2", "seconds": 19.62, "rank": 1},
-        {"car": "C5", "seconds": 20.14, "rank": 2}
+        {"car": "C2", "seconds": 19.62, "trick": "double shockwave", "rank": 1},
+        {"car": "C5", "seconds": 20.14, "trick": "", "rank": 2}
       ]
     },
     {"id": "harbor-sprint", "name": "Harbor Sprint", "times": []}
@@ -110,12 +119,16 @@ Each track lists its five fastest cars, ranked from one:
 curl -X PUT \
   http://127.0.0.1:8000/v1/leaderboard/maps/new-york/tracks/a-park-in-a-run/times \
   -H 'Content-Type: application/json' \
-  -d '{"car":"C2","seconds":19.62}'
+  -d '{"car":"C2","seconds":19.62,"trick":"double shockwave"}'
 ```
 
 The request replaces whatever time the car already holds on that track, even a
 faster one, and responds with the track's refreshed leaderboard. Times are
 recorded in seconds, rounded to three decimal places.
+
+`trick` is an optional note about how the lap was driven. Omitting it stores a
+blank, and re-recording a time replaces the previous trick along with it. Times
+recorded before the field existed read back with a blank `trick`.
 
 ## Delete a car's time
 
@@ -130,13 +143,17 @@ track responds with HTTP `404 Not Found`.
 ## Storage layout
 
 ```text
-maps/{map_id}                                  id, name, tracks[]
-maps/{map_id}/tracks/{track_id}                id, name
-maps/{map_id}/tracks/{track_id}/times/{car_id} car, seconds
+maps/{map_id}                                  id, name, chinese_name,
+                                               release_order, tracks[]
+maps/{map_id}/tracks/{track_id}                id, name, chinese_name
+maps/{map_id}/tracks/{track_id}/times/{car_id} car, seconds, trick
 ```
 
 The map document carries both tracks so one read renders the whole selector and
-both leaderboards. Each track's times are a subcollection, so a track's top five
+both leaderboards. That array fixes which tracks a map has and the order they
+appear in; each track's own document owns its `name` and `chinese_name`, so
+there is one obvious place to edit them and no duplicated value to drift. A
+detail missing from the track document falls back to the array. Each track's times are a subcollection, so a track's top five
 is a single ordered query and one car's time can be replaced or deleted without
 rewriting the others. Creating a map writes the map and its two track documents
 in one batch, which also makes the duplicate-name check atomic.

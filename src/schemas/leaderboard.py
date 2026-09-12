@@ -31,6 +31,18 @@ CarName = Annotated[
 ]
 Seconds = Annotated[float, Field(gt=0, lt=3_600)]
 
+
+def _collapse_optional_whitespace(value: str) -> str:
+    return " ".join(value.split())
+
+
+#: A trick note, which may be left blank.
+TrickName = Annotated[
+    str,
+    Field(max_length=64, pattern=r"^[^/\\\x00-\x1f]*$"),
+    AfterValidator(_collapse_optional_whitespace),
+]
+
 Identifier = Annotated[
     str,
     Path(
@@ -65,6 +77,7 @@ class LapTimeRequest(BaseModel):
 
     car: CarName
     seconds: Seconds
+    trick: TrickName = ""
 
 
 class LapTimeEntry(LapTime):
@@ -78,6 +91,7 @@ class TrackLeaderboardResponse(Track):
 class MapLeaderboardResponse(BaseModel):
     id: str
     name: str
+    chinese_name: str = ""
     tracks: list[TrackLeaderboardResponse]
 
 
@@ -93,6 +107,7 @@ class CarListResponse(BaseModel):
 class MapSummaryResponse(BaseModel):
     id: str
     name: str
+    chinese_name: str = ""
 
 
 class MapListResponse(BaseModel):
@@ -119,6 +134,7 @@ def map_leaderboard(
     return MapLeaderboardResponse(
         id=game_map.id,
         name=game_map.name,
+        chinese_name=game_map.chinese_name,
         tracks=[
             track_leaderboard(track, times.get(track.id, []))
             for track in game_map.tracks

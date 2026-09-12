@@ -23,8 +23,9 @@ from src.services.leaderboard import (
 
 
 class FakeSnapshot:
-    def __init__(self, fields: dict | None) -> None:
+    def __init__(self, fields: dict | None, document_id: str = "") -> None:
         self._fields = fields
+        self.id = document_id
 
     @property
     def exists(self) -> bool:
@@ -55,15 +56,17 @@ class FakeQuery:
 
     def stream(self):
         matches = [
-            fields
+            (path[-1], fields)
             for path, fields in self._documents.items()
             if len(path) == len(self._path) + 1 and path[:-1] == self._path
         ]
         if self._order_field is not None:
-            matches.sort(key=lambda fields: fields[self._order_field])
+            matches.sort(key=lambda match: match[1][self._order_field])
         if self._maximum is not None:
             matches = matches[: self._maximum]
-        return iter(FakeSnapshot(fields) for fields in matches)
+        return iter(
+            FakeSnapshot(fields, document_id) for document_id, fields in matches
+        )
 
 
 class FakeCollection(FakeQuery):
@@ -80,7 +83,7 @@ class FakeDocument:
         return FakeCollection(self._documents, self.path + (name,))
 
     def get(self) -> FakeSnapshot:
-        return FakeSnapshot(self._documents.get(self.path))
+        return FakeSnapshot(self._documents.get(self.path), self.path[-1])
 
     def set(self, fields: dict) -> None:
         self._documents[self.path] = dict(fields)
@@ -117,7 +120,7 @@ class FakeCollectionGroup:
 
     def stream(self):
         return iter(
-            FakeSnapshot(fields)
+            FakeSnapshot(fields, path[-1])
             for path, fields in self._documents.items()
             if len(path) >= 2 and path[-2] == self._name
         )
@@ -159,7 +162,7 @@ class LeaderboardServiceTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             self.firestore.documents[(MAP_COLLECTION, "new-york", "tracks", "harbor-sprint")],
-            {"id": "harbor-sprint", "name": "Harbor Sprint"},
+            {"id": "harbor-sprint", "name": "Harbor Sprint", "chinese_name": ""},
         )
 
     async def test_rejects_a_second_map_with_the_same_name(self) -> None:
@@ -178,13 +181,79 @@ class LeaderboardServiceTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(InvalidNameError):
             await self.service.create_map("Berlin", ["Night Run", "night-run"])
 
-    async def test_lists_maps_ordered_by_name(self) -> None:
+    async def test_lists_maps_in_release_order(self) -> None:
+        await self.service.create_map("Tokyo", ["One", "Two"])
+        await self.new_york()
+        await self.service.create_map("Rome", ["Three", "Four"])
+        # Rome ships first, New York later; Tokyo has no recorded order.
+        self.firestore.documents[(MAP_COLLECTION, "rome")]["release_order"] = 1
+        self.firestore.documents[(MAP_COLLECTION, "new-york")]["release_order"] = 9
+
+        names = [game_map.name for game_map in await self.service.list_maps()]
+
+        self.assertEqual(names, ["Rome", "New York", "Tokyo"])
+
+    async def test_lists_maps_without_a_release_order_last_by_name(self) -> None:
         await self.service.create_map("Tokyo", ["One", "Two"])
         await self.new_york()
 
         names = [game_map.name for game_map in await self.service.list_maps()]
 
         self.assertEqual(names, ["New York", "Tokyo"])
+
+    async def test_keeps_maps_that_predate_the_release_order_field(self) -> None:
+        await self.new_york()
+        await self.service.create_map("Rome", ["Three", "Four"])
+        self.firestore.documents[(MAP_COLLECTION, "rome")]["release_order"] = 1
+        # An order_by query in Firestore would drop this document entirely.
+        self.firestore.documents[(MAP_COLLECTION, "new-york")].pop("release_order", None)
+
+        names = [game_map.name for game_map in await self.service.list_maps()]
+
+        self.assertEqual(names, ["Rome", "New York"])
+
+    async def test_takes_track_details_from_the_track_document(self) -> None:
+        await self.new_york()
+        self.firestore.documents[
+            (MAP_COLLECTION, "new-york", "tracks", "a-park-in-a-run")
+        ]["chinese_name"] = "公园"
+
+        result = await self.service.map_times("new-york")
+
+        self.assertEqual(
+            [(track.name, track.chinese_name) for track in result.game_map.tracks],
+            [("A park In A run", "公园"), ("Harbor Sprint", "")],
+        )
+
+    async def test_falls_back_to_the_maps_track_array(self) -> None:
+        await self.new_york()
+        # Recorded on the map document instead of the track document.
+        tracks = self.firestore.documents[(MAP_COLLECTION, "new-york")]["tracks"]
+        tracks[1]["chinese_name"] = "海港冲刺"
+
+        result = await self.service.map_times("new-york")
+
+        self.assertEqual(result.game_map.tracks[1].chinese_name, "海港冲刺")
+
+    async def test_track_chinese_name_reaches_a_recorded_time(self) -> None:
+        await self.new_york()
+        self.firestore.documents[
+            (MAP_COLLECTION, "new-york", "tracks", "a-park-in-a-run")
+        ]["chinese_name"] = "公园"
+
+        result = await self.service.record_lap_time(
+            "new-york", "a-park-in-a-run", "C2", 19.62
+        )
+
+        self.assertEqual(result.track.chinese_name, "公园")
+
+    async def test_reports_a_maps_chinese_name(self) -> None:
+        await self.new_york()
+        self.firestore.documents[(MAP_COLLECTION, "new-york")]["chinese_name"] = "纽约"
+
+        result = await self.service.map_times("new-york")
+
+        self.assertEqual(result.game_map.chinese_name, "纽约")
 
     async def test_records_a_time_and_returns_the_track_leaderboard(self) -> None:
         await self.new_york()
@@ -253,6 +322,38 @@ class LeaderboardServiceTests(unittest.IsolatedAsyncioTestCase):
             await self.service.map_times("berlin")
         with self.assertRaises(TrackNotFoundError):
             await self.service.record_lap_time("new-york", "harbor-sprin", "C2", 19.62)
+
+    async def test_records_a_trick_alongside_the_time(self) -> None:
+        await self.new_york()
+
+        result = await self.service.record_lap_time(
+            "new-york", "a-park-in-a-run", "C2", 19.62, "double shockwave"
+        )
+
+        self.assertEqual([time.trick for time in result.times], ["double shockwave"])
+
+    async def test_times_recorded_without_a_trick_read_back_blank(self) -> None:
+        await self.new_york()
+        # A document written before the trick field existed.
+        self.firestore.documents[
+            (MAP_COLLECTION, "new-york", "tracks", "a-park-in-a-run", "times", "c2")
+        ] = {"car": "C2", "seconds": 19.62}
+
+        result = await self.service.map_times("new-york")
+
+        self.assertEqual(result.times["a-park-in-a-run"][0].trick, "")
+
+    async def test_re_recording_replaces_the_trick_too(self) -> None:
+        await self.new_york()
+        await self.service.record_lap_time(
+            "new-york", "a-park-in-a-run", "C2", 19.62, "double shockwave"
+        )
+
+        result = await self.service.record_lap_time(
+            "new-york", "a-park-in-a-run", "C2", 19.41, ""
+        )
+
+        self.assertEqual([(t.seconds, t.trick) for t in result.times], [(19.41, "")])
 
     async def test_lists_every_car_once_under_its_most_used_spelling(self) -> None:
         await self.new_york()
@@ -343,7 +444,10 @@ class LeaderboardRouterTests(unittest.IsolatedAsyncioTestCase):
 
         response = await list_maps(self.service)
 
-        self.assertEqual(response.maps[0].model_dump(), {"id": "tokyo", "name": "Tokyo"})
+        self.assertEqual(
+            response.maps[0].model_dump(),
+            {"id": "tokyo", "name": "Tokyo", "chinese_name": ""},
+        )
 
     async def test_translates_service_errors_into_status_codes(self) -> None:
         from fastapi import HTTPException

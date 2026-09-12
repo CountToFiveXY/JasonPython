@@ -115,10 +115,15 @@ class LeaderboardService:
         return game_map
 
     async def list_maps(self) -> list[GameMap]:
-        documents = await asyncio.to_thread(
-            lambda: list(self._maps().order_by("name").stream())
-        )
-        return [GameMap.model_validate(document.to_dict()) for document in documents]
+        """Maps in the game's release order, then by name.
+
+        Sorting here rather than in Firestore keeps maps that predate the
+        release_order field in the list; an order_by would drop them.
+        """
+
+        documents = await asyncio.to_thread(lambda: list(self._maps().stream()))
+        maps = [GameMap.model_validate(document.to_dict()) for document in documents]
+        return sorted(maps, key=lambda game_map: (game_map.release_order, game_map.name.lower()))
 
     async def list_cars(self) -> list[Car]:
         """Every car that holds a time anywhere, for the car selector.
@@ -163,10 +168,11 @@ class LeaderboardService:
         track_id: str,
         car: str,
         seconds: float,
+        trick: str = "",
     ) -> TrackTimes:
         track = self._track(await self._read_map(map_id), track_id)
         car_id = _required_identifier(car, "Car")
-        lap_time = LapTime(car=car, seconds=round(seconds, 3))
+        lap_time = LapTime(car=car, seconds=round(seconds, 3), trick=trick)
 
         await asyncio.to_thread(
             self._times(map_id, track_id).document(car_id).set,
@@ -202,7 +208,37 @@ class LeaderboardService:
         snapshot = await asyncio.to_thread(self._maps().document(map_id).get)
         if not snapshot.exists:
             raise MapNotFoundError(f"Map '{map_id}' not found")
-        return GameMap.model_validate(snapshot.to_dict())
+
+        game_map = GameMap.model_validate(snapshot.to_dict())
+        tracks = await self._describe_tracks(map_id, game_map.tracks)
+        return game_map.model_copy(update={"tracks": tracks})
+
+    async def _describe_tracks(self, map_id: str, tracks: list[Track]) -> list[Track]:
+        """Take each track's display details from its own document.
+
+        The map document's array fixes which tracks a map has and the order
+        they are shown in; the track documents own the name and Chinese name,
+        so there is one obvious place to edit them. A detail missing from the
+        document falls back to the array.
+        """
+
+        documents = await asyncio.to_thread(
+            lambda: list(
+                self._maps().document(map_id).collection(TRACK_COLLECTION).stream()
+            )
+        )
+        details = {document.id: (document.to_dict() or {}) for document in documents}
+
+        return [
+            Track(
+                id=track.id,
+                name=details.get(track.id, {}).get("name") or track.name,
+                chinese_name=(
+                    details.get(track.id, {}).get("chinese_name") or track.chinese_name
+                ),
+            )
+            for track in tracks
+        ]
 
     @staticmethod
     def _track(game_map: GameMap, track_id: str) -> Track:

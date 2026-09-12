@@ -36,7 +36,14 @@ async def list_maps(
 ) -> MapListResponse:
     maps = await service.list_maps()
     return MapListResponse(
-        maps=[MapSummaryResponse(id=game_map.id, name=game_map.name) for game_map in maps]
+        maps=[
+            MapSummaryResponse(
+                id=game_map.id,
+                name=game_map.name,
+                chinese_name=game_map.chinese_name,
+            )
+            for game_map in maps
+        ]
     )
 
 
@@ -96,6 +103,7 @@ async def record_lap_time(
             track_id,
             request.car,
             request.seconds,
+            request.trick,
         )
     except InvalidNameError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
