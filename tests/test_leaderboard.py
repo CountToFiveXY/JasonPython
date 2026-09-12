@@ -12,7 +12,9 @@ from src.routers.leaderboard import (
 from src.schemas import LapTimeRequest, MapCreateRequest
 from src.services import LeaderboardService
 from src.services.leaderboard import (
+    CARS_CACHE_KEY,
     MAP_COLLECTION,
+    MAPS_CACHE_KEY,
     InvalidNameError,
     LapTimeNotFoundError,
     MapAlreadyExistsError,
@@ -20,6 +22,21 @@ from src.services.leaderboard import (
     TrackNotFoundError,
     identifier,
 )
+
+
+class FakeRedis:
+    def __init__(self) -> None:
+        self.values: dict[str, str] = {}
+
+    async def get(self, key: str) -> str | None:
+        return self.values.get(key)
+
+    async def set(self, key: str, value: str, ex: int | None = None) -> None:
+        self.values[key] = value
+
+    async def delete(self, *keys: str) -> None:
+        for key in keys:
+            self.values.pop(key, None)
 
 
 class FakeSnapshot:
@@ -192,6 +209,40 @@ class LeaderboardServiceTests(unittest.IsolatedAsyncioTestCase):
         names = [game_map.name for game_map in await self.service.list_maps()]
 
         self.assertEqual(names, ["Rome", "New York", "Tokyo"])
+
+    async def test_reuses_cached_maps_cars_and_map_times(self) -> None:
+        redis = FakeRedis()
+        service = LeaderboardService(self.firestore, redis)
+        await service.create_map("New York", ["One", "Two"])
+        await service.record_lap_time("new-york", "one", "C2", 19.62)
+
+        first_maps = await service.list_maps()
+        first_cars = await service.list_cars()
+        first_times = await service.map_times("new-york")
+        self.firestore.documents[(MAP_COLLECTION, "new-york")]["name"] = "Changed"
+        self.firestore.documents[
+            (MAP_COLLECTION, "new-york", "tracks", "one", "times", "c2")
+        ]["seconds"] = 99.0
+
+        self.assertEqual((await service.list_maps())[0].name, first_maps[0].name)
+        self.assertEqual((await service.list_cars())[0].name, first_cars[0].name)
+        cached_times = await service.map_times("new-york")
+        self.assertEqual(cached_times.times["one"], first_times.times["one"])
+        self.assertIn(MAPS_CACHE_KEY, redis.values)
+        self.assertIn(CARS_CACHE_KEY, redis.values)
+        self.assertIn("leaderboard:map:new-york", redis.values)
+
+    async def test_lap_writes_invalidate_cached_leaderboard_and_cars(self) -> None:
+        redis = FakeRedis()
+        service = LeaderboardService(self.firestore, redis)
+        await service.create_map("New York", ["One", "Two"])
+        await service.list_cars()
+        await service.map_times("new-york")
+
+        await service.record_lap_time("new-york", "one", "C2", 19.62)
+
+        self.assertNotIn(CARS_CACHE_KEY, redis.values)
+        self.assertNotIn("leaderboard:map:new-york", redis.values)
 
     async def test_lists_maps_without_a_release_order_last_by_name(self) -> None:
         await self.service.create_map("Tokyo", ["One", "Two"])

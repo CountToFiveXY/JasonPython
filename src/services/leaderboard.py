@@ -1,6 +1,7 @@
 """Leaderboard use cases backed by Cloud Firestore."""
 
 import asyncio
+import json
 import os
 import re
 from collections import Counter, defaultdict
@@ -8,6 +9,8 @@ from dataclasses import dataclass
 
 from google.api_core.exceptions import AlreadyExists
 from google.cloud.firestore_v1 import Client as FirestoreClient
+from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 from src.entity import GameMap, LapTime, Track
 
@@ -16,6 +19,9 @@ MAP_COLLECTION = os.getenv("FIRESTORE_MAP_COLLECTION", "maps")
 TRACK_COLLECTION = "tracks"
 LAP_TIME_COLLECTION = "times"
 TOP_LAP_TIMES = 5
+LEADERBOARD_CACHE_TTL_SECONDS = int(os.getenv("LEADERBOARD_CACHE_TTL_SECONDS", "300"))
+MAPS_CACHE_KEY = "leaderboard:maps"
+CARS_CACHE_KEY = "leaderboard:cars"
 
 
 class InvalidNameError(ValueError):
@@ -81,8 +87,13 @@ def _required_identifier(name: str, subject: str) -> str:
 class LeaderboardService:
     """Stores maps, their tracks, and the fastest car times on each track."""
 
-    def __init__(self, firestore_client: FirestoreClient) -> None:
+    def __init__(
+        self,
+        firestore_client: FirestoreClient,
+        redis_client: Redis | None = None,
+    ) -> None:
         self._firestore = firestore_client
+        self._redis = redis_client
 
     async def create_map(self, name: str, track_names: list[str]) -> GameMap:
         tracks: list[Track] = []
@@ -112,6 +123,7 @@ class LeaderboardService:
         except AlreadyExists as exc:
             raise MapAlreadyExistsError(f"Map '{name}' already exists") from exc
 
+        await self._invalidate_cache(MAPS_CACHE_KEY, self._map_cache_key(game_map.id))
         return game_map
 
     async def list_maps(self) -> list[GameMap]:
@@ -121,9 +133,21 @@ class LeaderboardService:
         release_order field in the list; an order_by would drop them.
         """
 
+        cached = await self._read_cache(MAPS_CACHE_KEY)
+        if isinstance(cached, list):
+            return [GameMap.model_validate(value) for value in cached]
+
         documents = await asyncio.to_thread(lambda: list(self._maps().stream()))
         maps = [GameMap.model_validate(document.to_dict()) for document in documents]
-        return sorted(maps, key=lambda game_map: (game_map.release_order, game_map.name.lower()))
+        result = sorted(
+            maps,
+            key=lambda game_map: (game_map.release_order, game_map.name.lower()),
+        )
+        await self._write_cache(
+            MAPS_CACHE_KEY,
+            [game_map.model_dump(mode="json") for game_map in result],
+        )
+        return result
 
     async def list_cars(self) -> list[Car]:
         """Every car that holds a time anywhere, for the car selector.
@@ -131,6 +155,10 @@ class LeaderboardService:
         The same car is often written several ways (``C2`` and ``c2``). Each
         identifier is reported once, under its most-used spelling.
         """
+
+        cached = await self._read_cache(CARS_CACHE_KEY)
+        if isinstance(cached, list):
+            return [Car(id=value["id"], name=value["name"]) for value in cached]
 
         documents = await asyncio.to_thread(
             lambda: list(self._firestore.collection_group(LAP_TIME_COLLECTION).stream())
@@ -148,19 +176,45 @@ class LeaderboardService:
             for car_id, counter in spellings.items()
             if car_id
         ]
-        return sorted(cars, key=lambda car: car.name.lower())
+        result = sorted(cars, key=lambda car: car.name.lower())
+        await self._write_cache(
+            CARS_CACHE_KEY,
+            [{"id": car.id, "name": car.name} for car in result],
+        )
+        return result
 
     async def map_times(self, map_id: str) -> MapTimes:
+        cached = await self._read_cache(self._map_cache_key(map_id))
+        if isinstance(cached, dict):
+            return MapTimes(
+                game_map=GameMap.model_validate(cached["game_map"]),
+                times={
+                    track_id: [LapTime.model_validate(value) for value in values]
+                    for track_id, values in cached["times"].items()
+                },
+            )
+
         game_map = await self._read_map(map_id)
         results = await asyncio.gather(
             *(self._top_times(map_id, track.id) for track in game_map.tracks)
         )
-        return MapTimes(
+        result = MapTimes(
             game_map=game_map,
             times={
                 track.id: times for track, times in zip(game_map.tracks, results)
             },
         )
+        await self._write_cache(
+            self._map_cache_key(map_id),
+            {
+                "game_map": result.game_map.model_dump(mode="json"),
+                "times": {
+                    track_id: [lap_time.model_dump(mode="json") for lap_time in times]
+                    for track_id, times in result.times.items()
+                },
+            },
+        )
+        return result
 
     async def record_lap_time(
         self,
@@ -178,6 +232,7 @@ class LeaderboardService:
             self._times(map_id, track_id).document(car_id).set,
             lap_time.model_dump(),
         )
+        await self._invalidate_cache(self._map_cache_key(map_id), CARS_CACHE_KEY)
         return TrackTimes(track=track, times=await self._top_times(map_id, track_id))
 
     async def delete_lap_time(self, map_id: str, track_id: str, car: str) -> TrackTimes:
@@ -190,7 +245,41 @@ class LeaderboardService:
             raise LapTimeNotFoundError(f"'{car}' has no time on this track")
         await asyncio.to_thread(document.delete)
 
+        await self._invalidate_cache(self._map_cache_key(map_id), CARS_CACHE_KEY)
         return TrackTimes(track=track, times=await self._top_times(map_id, track_id))
+
+    @staticmethod
+    def _map_cache_key(map_id: str) -> str:
+        return f"leaderboard:map:{map_id}"
+
+    async def _read_cache(self, key: str):
+        if self._redis is None:
+            return None
+        try:
+            value = await self._redis.get(key)
+            return json.loads(value) if value is not None else None
+        except (RedisError, json.JSONDecodeError, TypeError):
+            return None
+
+    async def _write_cache(self, key: str, value) -> None:
+        if self._redis is None:
+            return
+        try:
+            await self._redis.set(
+                key,
+                json.dumps(value, ensure_ascii=False),
+                ex=LEADERBOARD_CACHE_TTL_SECONDS,
+            )
+        except (RedisError, TypeError):
+            pass
+
+    async def _invalidate_cache(self, *keys: str) -> None:
+        if self._redis is None:
+            return
+        try:
+            await self._redis.delete(*keys)
+        except RedisError:
+            pass
 
     def _maps(self):
         return self._firestore.collection(MAP_COLLECTION)

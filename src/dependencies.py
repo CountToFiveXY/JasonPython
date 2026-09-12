@@ -49,10 +49,11 @@ def get_image_service() -> ImageService:
 
 def get_leaderboard_service(
     firestore_client: FirestoreClient = Depends(get_firestore),
+    redis_client: Redis = Depends(get_redis),
 ) -> LeaderboardService:
-    """Build a leaderboard service around the shared Firestore client."""
+    """Build a leaderboard service around shared Firestore and Redis clients."""
 
-    return LeaderboardService(firestore_client)
+    return LeaderboardService(firestore_client, redis_client)
 
 
 def get_message_service(
