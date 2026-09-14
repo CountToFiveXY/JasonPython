@@ -107,8 +107,11 @@
 | `GET` | `/v1/leaderboard/cars` | None | Lists every car holding a time, for the car selector. | [Guide](apis/leaderboard.md) |
 | `POST` | `/v1/leaderboard/maps` | JSON `name` and two `tracks` names | Creates a map and its fixed pair of tracks. | [Guide](apis/leaderboard.md) |
 | `GET` | `/v1/leaderboard/maps/{map_id}` | Map identifier | Returns every recorded time on each track, fastest first. | [Guide](apis/leaderboard.md) |
+| `GET` | `/v1/leaderboard/tracks` | None | Lists every track with its map, for a selector. | [Guide](apis/leaderboard.md) |
+| `POST` | `/v1/leaderboard/tracks/lookup` | JSON `names` list | Returns the leaderboards for named tracks, across maps. | [Guide](apis/leaderboard.md) |
 | `PUT` | `/v1/leaderboard/maps/{map_id}/tracks/{track_id}/times` | JSON `car` and `seconds` fields | Replaces a car's time on a track. | [Guide](apis/leaderboard.md) |
 | `DELETE` | `/v1/leaderboard/maps/{map_id}/tracks/{track_id}/times/{car}` | Map, track, and car | Removes a car's time from a track. | [Guide](apis/leaderboard.md) |
+| `POST` | `/v1/text-recognition` | Image bytes as the body | Reads the words out of an image. | [Guide](apis/text_recognition.md) |
 
 ## Implementation
 

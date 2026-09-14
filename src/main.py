@@ -9,6 +9,7 @@ from src.routers import (
     messages,
     order,
     ranking,
+    text_recognition,
     url_shortening,
 )
 
@@ -23,3 +24,4 @@ app.include_router(url_shortening.router)
 app.include_router(ranking.router)
 app.include_router(messages.router)
 app.include_router(leaderboard.router)
+app.include_router(text_recognition.router)

@@ -13,8 +13,13 @@ from src.schemas import (
     MapLeaderboardResponse,
     MapListResponse,
     MapSummaryResponse,
+    TrackListResponse,
+    TrackLookupRequest,
+    TrackLookupResponse,
     TrackLeaderboardResponse,
     map_leaderboard,
+    map_track,
+    map_track_leaderboard,
     track_leaderboard,
 )
 from src.services import LeaderboardService
@@ -75,6 +80,31 @@ async def create_map(
     return map_leaderboard(game_map, {})
 
 
+@router.get("/tracks", response_model=TrackListResponse)
+async def list_tracks(
+    service: LeaderboardService = Depends(get_leaderboard_service),
+) -> TrackListResponse:
+    """Every track with the map it belongs to, for a track selector."""
+
+    return TrackListResponse(
+        tracks=[map_track(entry) for entry in await service.list_tracks()]
+    )
+
+
+@router.post("/tracks/lookup", response_model=TrackLookupResponse)
+async def lookup_tracks(
+    request: TrackLookupRequest,
+    service: LeaderboardService = Depends(get_leaderboard_service),
+) -> TrackLookupResponse:
+    """Leaderboards for a list of track names, whatever maps they belong to."""
+
+    result = await service.lookup_tracks(request.names)
+    return TrackLookupResponse(
+        tracks=[map_track_leaderboard(entry) for entry in result.tracks],
+        unmatched=result.unmatched,
+    )
+
+
 @router.get("/maps/{map_id}", response_model=MapLeaderboardResponse)
 async def read_map(
     map_id: Identifier,
@@ -103,7 +133,6 @@ async def record_lap_time(
             track_id,
             request.car,
             request.seconds,
-            request.trick,
         )
     except InvalidNameError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

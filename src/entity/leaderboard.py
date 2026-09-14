@@ -34,6 +34,3 @@ class LapTime(BaseModel):
 
     car: str
     seconds: float
-    #: Optional note about the trick used. Times recorded before this field
-    #: existed read back as blank.
-    trick: str = ""

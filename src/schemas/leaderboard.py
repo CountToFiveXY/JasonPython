@@ -32,17 +32,6 @@ CarName = Annotated[
 Seconds = Annotated[float, Field(gt=0, lt=3_600)]
 
 
-def _collapse_optional_whitespace(value: str) -> str:
-    return " ".join(value.split())
-
-
-#: A trick note, which may be left blank.
-TrickName = Annotated[
-    str,
-    Field(max_length=64, pattern=r"^[^/\\\x00-\x1f]*$"),
-    AfterValidator(_collapse_optional_whitespace),
-]
-
 Identifier = Annotated[
     str,
     Path(
@@ -77,7 +66,6 @@ class LapTimeRequest(BaseModel):
 
     car: CarName
     seconds: Seconds
-    trick: TrickName = ""
 
 
 class LapTimeEntry(LapTime):
@@ -139,4 +127,53 @@ def map_leaderboard(
             track_leaderboard(track, times.get(track.id, []))
             for track in game_map.tracks
         ],
+    )
+
+
+class TrackLookupRequest(BaseModel):
+    """Track names to resolve, typically read off a screenshot."""
+
+    names: Annotated[list[Name], Field(min_length=1, max_length=12)]
+
+
+class MapTrackLeaderboardResponse(TrackLeaderboardResponse):
+    map_id: str
+    map_name: str
+    map_chinese_name: str = ""
+    requested_name: str
+
+
+class TrackLookupResponse(BaseModel):
+    tracks: list[MapTrackLeaderboardResponse]
+    #: Names that matched no track, so the caller can see what was missed.
+    unmatched: list[str]
+
+
+def map_track_leaderboard(result) -> MapTrackLeaderboardResponse:
+    return MapTrackLeaderboardResponse(
+        **result.track.model_dump(),
+        times=ranked(result.times),
+        map_id=result.game_map.id,
+        map_name=result.game_map.name,
+        map_chinese_name=result.game_map.chinese_name,
+        requested_name=result.requested_name,
+    )
+
+
+class MapTrackResponse(Track):
+    map_id: str
+    map_name: str
+    map_chinese_name: str = ""
+
+
+class TrackListResponse(BaseModel):
+    tracks: list[MapTrackResponse]
+
+
+def map_track(entry) -> MapTrackResponse:
+    return MapTrackResponse(
+        **entry.track.model_dump(),
+        map_id=entry.game_map.id,
+        map_name=entry.game_map.name,
+        map_chinese_name=entry.game_map.chinese_name,
     )

@@ -1,6 +1,7 @@
 aiokafka
 fastapi
 firebase-admin
+google-cloud-vision
 pillow
 redis
 temporalio

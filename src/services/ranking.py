@@ -14,8 +14,17 @@ from src.entity import CardType
 WIDTH = 304
 HEIGHT = 506
 LOGO_PATH = Path(__file__).resolve().parents[2] / "assets" / "unite_galaxy_logo.png"
-CAR_TEXT_MAX_WIDTH = 92
-CAR_TEXT_MAX_HEIGHT = 48
+LOGO_ORIGIN = (23, 0)
+LOGO_SIZE = 104
+HEADER_HEIGHT = 105
+
+# The car name fills the header to the right of the logo, rather than a narrow
+# column in the middle of it.
+CAR_TEXT_LEFT = LOGO_ORIGIN[0] + LOGO_SIZE + 8
+CAR_TEXT_RIGHT = WIDTH - 10
+CAR_TEXT_MAX_WIDTH = CAR_TEXT_RIGHT - CAR_TEXT_LEFT
+CAR_TEXT_MAX_HEIGHT = 62
+CAR_TEXT_CENTER = ((CAR_TEXT_LEFT + CAR_TEXT_RIGHT) // 2, HEADER_HEIGHT // 2)
 
 PERCENTAGES: dict[CardType, tuple[int, ...]] = {
     CardType.CH: (1, 5, 25, 50, 75, 100),
@@ -112,6 +121,21 @@ def _centered_text(draw: ImageDraw.ImageDraw, xy: tuple[int, int], text: str, fo
     draw.text((xy[0] - (box[2] - box[0]) / 2, xy[1]), text, font=font, fill=fill)
 
 
+def _text_in_box(draw: ImageDraw.ImageDraw, center: tuple[int, int], text: str, font, fill):
+    """Centre text on a point in both axes, whatever size the font ended up."""
+
+    box = draw.textbbox((0, 0), text, font=font)
+    draw.text(
+        (
+            center[0] - (box[2] - box[0]) / 2 - box[0],
+            center[1] - (box[3] - box[1]) / 2 - box[1],
+        ),
+        text,
+        font=font,
+        fill=fill,
+    )
+
+
 def _row_text(
     draw: ImageDraw.ImageDraw,
     *,
@@ -130,8 +154,8 @@ def _row_text(
 def _draw_logo(image: Image.Image) -> None:
     with Image.open(LOGO_PATH) as source:
         logo = source.convert("RGBA")
-        logo.thumbnail((104, 104), Image.Resampling.LANCZOS)
-        image.paste(logo, (23, 0), logo)
+        logo.thumbnail((LOGO_SIZE, LOGO_SIZE), Image.Resampling.LANCZOS)
+        image.paste(logo, LOGO_ORIGIN, logo)
 
 
 def render_ranking(
@@ -149,13 +173,13 @@ def render_ranking(
     car_font = _fitted_font(
         draw,
         car_text,
-        maximum_size=38,
+        maximum_size=52,
         maximum_width=CAR_TEXT_MAX_WIDTH,
         maximum_height=CAR_TEXT_MAX_HEIGHT,
         bold=True,
         condensed=True,
     )
-    _centered_text(draw, (229, 29), car_text, car_font, "white")
+    _text_in_box(draw, CAR_TEXT_CENTER, car_text, car_font, "white")
 
     row_top = 105
     row_height = 54

@@ -2,12 +2,14 @@
 
 from fastapi import Depends
 from aiokafka import AIOKafkaProducer
+from google.cloud import vision
 from google.cloud.firestore_v1 import Client as FirestoreClient
 from redis.asyncio import Redis
 from temporalio.client import Client as TemporalClient
 
 from src.infrastructure.clients import (
     get_firestore,
+    get_vision,
     get_kafka_producer,
     get_redis,
     get_temporal,
@@ -20,6 +22,7 @@ from src.services import (
     MessageService,
     OrderService,
     RankingService,
+    TextRecognitionService,
     UrlShorteningService,
 )
 
@@ -76,6 +79,14 @@ def get_ranking_service() -> RankingService:
     """Build the stateless ranking image service."""
 
     return RankingService()
+
+
+def get_text_recognition_service(
+    vision_client: vision.ImageAnnotatorClient = Depends(get_vision),
+) -> TextRecognitionService:
+    """Build a text-recognition service around the shared Vision client."""
+
+    return TextRecognitionService(vision_client)
 
 
 def get_url_shortening_service(

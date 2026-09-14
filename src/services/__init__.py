@@ -7,6 +7,7 @@ from src.services.leaderboard import LeaderboardService
 from src.services.messages import MessageService
 from src.services.order import OrderService
 from src.services.ranking import RankingService
+from src.services.text_recognition import TextRecognitionService
 from src.services.url_shortening import UrlShorteningService
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "MessageService",
     "OrderService",
     "RankingService",
+    "TextRecognitionService",
     "UrlShorteningService",
 ]

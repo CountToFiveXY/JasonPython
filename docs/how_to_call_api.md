@@ -10,6 +10,7 @@ Each endpoint has its own guide:
 - [Order API](apis/order.md)
 - [Messages API](apis/messages.md)
 - [Leaderboard API](apis/leaderboard.md)
+- [Text recognition API](apis/text_recognition.md)
 - [Health check API](apis/health.md)
 - [Hello workflow API](apis/hello.md)
 

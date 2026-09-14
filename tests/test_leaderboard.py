@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 
 from google.api_core.exceptions import AlreadyExists
 
@@ -40,9 +41,15 @@ class FakeRedis:
 
 
 class FakeSnapshot:
-    def __init__(self, fields: dict | None, document_id: str = "") -> None:
+    def __init__(
+        self,
+        fields: dict | None,
+        document_id: str = "",
+        path: tuple[str, ...] = (),
+    ) -> None:
         self._fields = fields
         self.id = document_id
+        self.reference = SimpleNamespace(path="/".join(path))
 
     @property
     def exists(self) -> bool:
@@ -82,7 +89,8 @@ class FakeQuery:
         if self._maximum is not None:
             matches = matches[: self._maximum]
         return iter(
-            FakeSnapshot(fields, document_id) for document_id, fields in matches
+            FakeSnapshot(fields, document_id, self._path + (document_id,))
+            for document_id, fields in matches
         )
 
 
@@ -100,7 +108,7 @@ class FakeDocument:
         return FakeCollection(self._documents, self.path + (name,))
 
     def get(self) -> FakeSnapshot:
-        return FakeSnapshot(self._documents.get(self.path), self.path[-1])
+        return FakeSnapshot(self._documents.get(self.path), self.path[-1], self.path)
 
     def set(self, fields: dict) -> None:
         self._documents[self.path] = dict(fields)
@@ -137,7 +145,7 @@ class FakeCollectionGroup:
 
     def stream(self):
         return iter(
-            FakeSnapshot(fields, path[-1])
+            FakeSnapshot(fields, path[-1], path)
             for path, fields in self._documents.items()
             if len(path) >= 2 and path[-2] == self._name
         )
@@ -374,37 +382,92 @@ class LeaderboardServiceTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(TrackNotFoundError):
             await self.service.record_lap_time("new-york", "harbor-sprin", "C2", 19.62)
 
-    async def test_records_a_trick_alongside_the_time(self) -> None:
-        await self.new_york()
 
-        result = await self.service.record_lap_time(
-            "new-york", "a-park-in-a-run", "C2", 19.62, "double shockwave"
+
+
+    async def test_lists_every_track_in_map_release_order(self) -> None:
+        await self.new_york()
+        await self.service.create_map("Rome", ["Roman Tumble", "Roman Byroads"])
+        self.firestore.documents[(MAP_COLLECTION, "rome")]["release_order"] = 1
+        self.firestore.documents[(MAP_COLLECTION, "new-york")]["release_order"] = 2
+
+        tracks = await self.service.list_tracks()
+
+        self.assertEqual(
+            [(t.game_map.name, t.track.name) for t in tracks],
+            [
+                ("Rome", "Roman Tumble"),
+                ("Rome", "Roman Byroads"),
+                ("New York", "A park In A run"),
+                ("New York", "Harbor Sprint"),
+            ],
         )
 
-        self.assertEqual([time.trick for time in result.times], ["double shockwave"])
-
-    async def test_times_recorded_without_a_trick_read_back_blank(self) -> None:
+    async def test_listed_tracks_carry_the_document_chinese_name(self) -> None:
         await self.new_york()
-        # A document written before the trick field existed.
         self.firestore.documents[
-            (MAP_COLLECTION, "new-york", "tracks", "a-park-in-a-run", "times", "c2")
-        ] = {"car": "C2", "seconds": 19.62}
+            (MAP_COLLECTION, "new-york", "tracks", "harbor-sprint")
+        ]["chinese_name"] = "海港冲刺"
 
-        result = await self.service.map_times("new-york")
+        tracks = await self.service.list_tracks()
 
-        self.assertEqual(result.times["a-park-in-a-run"][0].trick, "")
+        chinese = {t.track.id: t.track.chinese_name for t in tracks}
+        self.assertEqual(chinese["harbor-sprint"], "海港冲刺")
+        self.assertEqual(chinese["a-park-in-a-run"], "")
 
-    async def test_re_recording_replaces_the_trick_too(self) -> None:
+    async def test_lookup_accepts_track_identifiers(self) -> None:
+        # A selector already knows the identifier, so it sends that.
         await self.new_york()
-        await self.service.record_lap_time(
-            "new-york", "a-park-in-a-run", "C2", 19.62, "double shockwave"
+        await self.service.record_lap_time("new-york", "harbor-sprint", "c2", 20.0)
+
+        result = await self.service.lookup_tracks(["harbor-sprint"])
+
+        self.assertEqual([t.track.name for t in result.tracks], ["Harbor Sprint"])
+        self.assertEqual([t.times[0].car for t in result.tracks], ["c2"])
+
+    async def test_looks_up_tracks_across_maps_in_the_order_asked(self) -> None:
+        await self.new_york()
+        await self.service.create_map("Rome", ["Roman Tumble", "It's a Twister!"])
+        await self.service.record_lap_time("rome", "roman-tumble", "c2", 18.033)
+        await self.service.record_lap_time("new-york", "harbor-sprint", "狼", 19.5)
+
+        result = await self.service.lookup_tracks(
+            ["HARBOR SPRINT", "ROMAN TUMBLE"]
         )
 
-        result = await self.service.record_lap_time(
-            "new-york", "a-park-in-a-run", "C2", 19.41, ""
+        self.assertEqual(result.unmatched, [])
+        self.assertEqual(
+            [(t.game_map.name, t.track.name) for t in result.tracks],
+            [("New York", "Harbor Sprint"), ("Rome", "Roman Tumble")],
         )
+        self.assertEqual([t.times[0].car for t in result.tracks], ["狼", "c2"])
+        # The requested spelling is carried back so the caller can label it.
+        self.assertEqual(result.tracks[0].requested_name, "HARBOR SPRINT")
 
-        self.assertEqual([(t.seconds, t.trick) for t in result.times], [(19.41, "")])
+    async def test_lookup_tolerates_punctuation_recognition_gets_wrong(self) -> None:
+        await self.service.create_map("Rome", ["Roman Tumble", "It's a Twister!"])
+
+        result = await self.service.lookup_tracks(["ITS A TWISTER"])
+
+        self.assertEqual([t.track.name for t in result.tracks], ["It's a Twister!"])
+
+    async def test_lookup_reports_names_it_could_not_match(self) -> None:
+        await self.new_york()
+
+        result = await self.service.lookup_tracks(["Harbor Sprint", "NOT A TRACK"])
+
+        self.assertEqual([t.track.name for t in result.tracks], ["Harbor Sprint"])
+        self.assertEqual(result.unmatched, ["NOT A TRACK"])
+
+    async def test_lookup_matches_a_chinese_track_name(self) -> None:
+        await self.new_york()
+        self.firestore.documents[
+            (MAP_COLLECTION, "new-york", "tracks", "harbor-sprint")
+        ]["chinese_name"] = "海港冲刺"
+
+        result = await self.service.lookup_tracks(["海港冲刺"])
+
+        self.assertEqual([t.track.name for t in result.tracks], ["Harbor Sprint"])
 
     async def test_lists_every_car_once_under_its_most_used_spelling(self) -> None:
         await self.new_york()

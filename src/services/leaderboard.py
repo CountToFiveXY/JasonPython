@@ -88,6 +88,31 @@ class TrackTimes:
 
 
 @dataclass(frozen=True)
+class MapTrack:
+    """A track and the map it belongs to, without its times."""
+
+    game_map: GameMap
+    track: Track
+
+
+@dataclass(frozen=True)
+class MapTrackTimes:
+    """A track together with the map it belongs to, for cross-map listings."""
+
+    game_map: GameMap
+    track: Track
+    times: list[LapTime]
+    #: The name that was looked up, which may be spelled differently.
+    requested_name: str
+
+
+@dataclass(frozen=True)
+class TrackLookup:
+    tracks: list[MapTrackTimes]
+    unmatched: list[str]
+
+
+@dataclass(frozen=True)
 class MapTimes:
     game_map: GameMap
     times: dict[str, list[LapTime]]
@@ -106,6 +131,16 @@ def identifier(name: str) -> str:
 
     value = re.sub(r"\W+", "-", name.lower(), flags=re.UNICODE).strip("-")
     return "" if _RESERVED_IDENTIFIERS.match(value) else value
+
+
+def _letters_and_digits(value: str) -> str:
+    """A name reduced to its letters and digits, for tolerant matching.
+
+    Punctuation is what optical recognition gets wrong most often, so
+    ``IT'S A TWISTER!`` and ``ITS A TWISTER`` compare equal.
+    """
+
+    return re.sub(r"\W+", "", value.lower(), flags=re.UNICODE)
 
 
 def _required_identifier(name: str, subject: str) -> str:
@@ -214,6 +249,90 @@ class LeaderboardService:
         )
         return result
 
+    async def list_tracks(self) -> list[MapTrack]:
+        """Every track, in map release order then the map's own track order.
+
+        This is what fills a track selector. It is not cached: it is one
+        collection-group read on top of the cached map list, and adding a key
+        the Firestore watcher does not know about would let it go stale.
+        """
+
+        maps = await self.list_maps()
+        details = await self._track_details()
+        return [
+            MapTrack(
+                game_map=game_map,
+                track=details.get((game_map.id, track.id), track),
+            )
+            for game_map in maps
+            for track in game_map.tracks
+        ]
+
+    async def _track_details(self) -> dict[tuple[str, str], Track]:
+        """Track documents keyed by map and track, which own the real names."""
+
+        documents = await asyncio.to_thread(
+            lambda: list(self._firestore.collection_group(TRACK_COLLECTION).stream())
+        )
+
+        details: dict[tuple[str, str], Track] = {}
+        for document in documents:
+            segments = document.reference.path.split("/")
+            if len(segments) < 4:
+                continue
+            fields = document.to_dict() or {}
+            details[(segments[1], segments[3])] = Track(
+                id=segments[3],
+                name=fields.get("name") or segments[3],
+                chinese_name=fields.get("chinese_name", ""),
+            )
+        return details
+
+    async def lookup_tracks(self, names: list[str]) -> TrackLookup:
+        """Resolve track names to their leaderboards, across every map.
+
+        Built for a line-up read off a screenshot: the names arrive as text,
+        may belong to different maps, and some may not match anything.
+        """
+
+        index: dict[str, tuple[GameMap, Track]] = {}
+        for entry in await self.list_tracks():
+            for key in {
+                entry.track.id,
+                _letters_and_digits(entry.track.name),
+                _letters_and_digits(entry.track.chinese_name),
+            }:
+                if key:
+                    index.setdefault(key, (entry.game_map, entry.track))
+
+        resolved: list[tuple[str, GameMap, Track]] = []
+        unmatched: list[str] = []
+        for name in names:
+            found = index.get(identifier(name)) or index.get(_letters_and_digits(name))
+            if found is None:
+                unmatched.append(name)
+            else:
+                resolved.append((name, found[0], found[1]))
+
+        # One read per distinct map rather than per track, and both tracks of a
+        # map come from the same cached payload.
+        map_ids = list({game_map.id for _, game_map, _ in resolved})
+        results = await asyncio.gather(*(self.map_times(map_id) for map_id in map_ids))
+        times_by_map = dict(zip(map_ids, results))
+
+        return TrackLookup(
+            tracks=[
+                MapTrackTimes(
+                    game_map=times_by_map[game_map.id].game_map,
+                    track=track,
+                    times=times_by_map[game_map.id].times.get(track.id, []),
+                    requested_name=name,
+                )
+                for name, game_map, track in resolved
+            ],
+            unmatched=unmatched,
+        )
+
     async def map_times(self, map_id: str) -> MapTimes:
         cached = await self._read_cache(self._map_cache_key(map_id))
         if isinstance(cached, dict):
@@ -253,11 +372,10 @@ class LeaderboardService:
         track_id: str,
         car: str,
         seconds: float,
-        trick: str = "",
     ) -> TrackTimes:
         track = self._track(await self._read_map(map_id), track_id)
         car_id = _required_identifier(car, "Car")
-        lap_time = LapTime(car=car, seconds=round(seconds, 3), trick=trick)
+        lap_time = LapTime(car=car, seconds=round(seconds, 3))
 
         await asyncio.to_thread(
             self._times(map_id, track_id).document(car_id).set,

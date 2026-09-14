@@ -105,8 +105,8 @@ ranked from one:
       "id": "a-park-in-a-run",
       "name": "A park In A run",
       "times": [
-        {"car": "C2", "seconds": 19.62, "trick": "double shockwave", "rank": 1},
-        {"car": "C5", "seconds": 20.14, "trick": "", "rank": 2}
+        {"car": "C2", "seconds": 19.62, "rank": 1},
+        {"car": "C5", "seconds": 20.14, "rank": 2}
       ]
     },
     {"id": "harbor-sprint", "name": "Harbor Sprint", "times": []}
@@ -114,22 +114,85 @@ ranked from one:
 }
 ```
 
+## List every track
+
+```bash
+curl http://127.0.0.1:8000/v1/leaderboard/tracks
+```
+
+```json
+{"tracks": [
+  {"id": "railroad-bustle", "name": "Railroad Bustle", "chinese_name": "喧闹铁路",
+   "map_id": "san-francisco", "map_name": "San Francisco", "map_chinese_name": "旧金山"}
+]}
+```
+
+All 36 tracks with the map each belongs to, in map release order and then the
+map's own track order. This fills the track selectors in JasonApp, which send
+the identifiers straight back to the lookup below.
+
+Names come from the track documents, so the list is one collection-group read
+on top of the cached map list. It is deliberately not cached itself: a separate
+cache key would not be invalidated by the Firestore watcher and could go stale
+behind a console edit.
+
+## Look up tracks by name
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/leaderboard/tracks/lookup \
+  -H 'Content-Type: application/json' \
+  -d '{"names":["WATERSLIDE WHIRL","LEAP OF FAITH","NOT A TRACK"]}'
+```
+
+```json
+{
+  "tracks": [
+    {
+      "id": "waterslide-whirl",
+      "name": "Waterslide Whirl",
+      "chinese_name": "滑水道旋流",
+      "map_id": "singapore",
+      "map_name": "Singapore",
+      "map_chinese_name": "新加坡",
+      "requested_name": "WATERSLIDE WHIRL",
+      "times": [{"car": "狼", "seconds": 21.057, "rank": 1}]
+    }
+  ],
+  "unmatched": ["NOT A TRACK"]
+}
+```
+
+Built for a line-up read off a screenshot with the
+[text recognition API](text_recognition.md): the names arrive as text, the
+tracks they name usually belong to different maps, and some names will not
+match anything. Results keep the order asked for, each carries the map it
+belongs to and the `requested_name` it was matched from, and names that matched
+nothing come back in `unmatched` rather than being dropped silently.
+
+Identifiers work as input too, which is what the track selectors send.
+
+Matching tries the derived identifier first, then the name reduced to letters
+and digits, so `ITS A TWISTER` finds `It's a Twister!` — punctuation is what
+optical recognition gets wrong most often. A track's Chinese name matches too.
+Track names are read from the track documents, so a name only recorded there
+still resolves.
+
+One read covers the whole track index, and one per distinct map covers the
+times, so a five-track line-up spanning five maps costs six reads rather than
+one per track — and the map reads come from the Redis cache when warm.
+
 ## Record a car's time
 
 ```bash
 curl -X PUT \
   http://127.0.0.1:8000/v1/leaderboard/maps/new-york/tracks/a-park-in-a-run/times \
   -H 'Content-Type: application/json' \
-  -d '{"car":"C2","seconds":19.62,"trick":"double shockwave"}'
+  -d '{"car":"C2","seconds":19.62}'
 ```
 
 The request replaces whatever time the car already holds on that track, even a
 faster one, and responds with the track's refreshed leaderboard. Times are
 recorded in seconds, rounded to three decimal places.
-
-`trick` is an optional note about how the lap was driven. Omitting it stores a
-blank, and re-recording a time replaces the previous trick along with it. Times
-recorded before the field existed read back with a blank `trick`.
 
 ## Delete a car's time
 
@@ -171,7 +234,7 @@ expiring on that TTL alone.
 maps/{map_id}                                  id, name, chinese_name,
                                                release_order, tracks[]
 maps/{map_id}/tracks/{track_id}                id, name, chinese_name
-maps/{map_id}/tracks/{track_id}/times/{car_id} car, seconds, trick
+maps/{map_id}/tracks/{track_id}/times/{car_id} car, seconds
 ```
 
 The map document carries both tracks so one read renders the whole selector and

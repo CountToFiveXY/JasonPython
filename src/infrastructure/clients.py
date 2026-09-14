@@ -9,6 +9,7 @@ from aiokafka import AIOKafkaProducer
 from fastapi import FastAPI, HTTPException, Request, status
 from firebase_admin import firestore
 from google.auth.exceptions import DefaultCredentialsError
+from google.cloud import vision
 from google.cloud.firestore_v1 import Client as FirestoreClient
 from redis.asyncio import Redis
 from temporalio.client import Client
@@ -112,5 +113,22 @@ def get_firestore(request: Request) -> FirestoreClient:
                 "Firestore credentials are not configured. Set "
                 "GOOGLE_APPLICATION_CREDENTIALS to a Firebase service-account "
                 "JSON file."
+            ),
+        ) from exc
+
+
+def get_vision(request: Request) -> vision.ImageAnnotatorClient:
+    """The shared Cloud Vision client, built on first use like Firestore."""
+
+    try:
+        if not hasattr(request.app.state, "vision"):
+            request.app.state.vision = vision.ImageAnnotatorClient()
+        return request.app.state.vision
+    except DefaultCredentialsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Cloud Vision credentials are not configured. Set "
+                "GOOGLE_APPLICATION_CREDENTIALS to a service-account JSON file."
             ),
         ) from exc
