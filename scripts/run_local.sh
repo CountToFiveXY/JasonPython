@@ -8,6 +8,7 @@ python_bin="$venv_dir/bin/python"
 requirements_file="$project_dir/requirements.txt"
 requirements_stamp="$venv_dir/.requirements.sha256"
 api_port_file="$venv_dir/jasonapp-api-port"
+services_pid_file="$venv_dir/jasonapp-services.pid"
 redis_data_dir="${REDIS_DATA_DIR:-$(dirname "$project_dir")/redis}"
 firebase_credentials_default="$HOME/.config/jasonapp/service-account.json"
 kafka_bootstrap_servers="${KAFKA_BOOTSTRAP_SERVERS:-127.0.0.1:9092}"
@@ -196,9 +197,31 @@ cleanup() {
     fi
 
     rm -f "$api_port_file"
+    if [[ -f "$services_pid_file" ]] && [[ "$(<"$services_pid_file")" == "$$" ]]; then
+        rm -f "$services_pid_file"
+    fi
 }
 
 trap cleanup EXIT INT TERM
+
+if [[ -f "$services_pid_file" ]]; then
+    previous_pid="$(<"$services_pid_file")"
+    if [[ "$previous_pid" =~ ^[0-9]+$ ]] && [[ "$previous_pid" != "$$" ]] && \
+       kill -0 "$previous_pid" >/dev/null 2>&1; then
+        highlight "Stopping the previous JasonApp service session..."
+        kill -TERM "$previous_pid"
+        for _ in {1..50}; do
+            kill -0 "$previous_pid" >/dev/null 2>&1 || break
+            sleep 0.1
+        done
+        if kill -0 "$previous_pid" >/dev/null 2>&1; then
+            highlight_error "The previous JasonApp service session could not be stopped."
+            highlight_error "Restart this Mac, then click Activate All Services again."
+            exit 1
+        fi
+    fi
+fi
+printf '%s\n' "$$" > "$services_pid_file"
 
 rm -f "$api_port_file"
 install_system_dependencies
@@ -276,7 +299,7 @@ highlight "Starting Kafka message worker..."
 kafka_worker_pid=$!
 
 highlight "Starting FastAPI at http://127.0.0.1:$api_port..."
-"$python_bin" -m uvicorn src.main:app --reload --host 0.0.0.0 --port "$api_port" &
+"$python_bin" -m uvicorn src.main:app --host 0.0.0.0 --port "$api_port" &
 api_pid=$!
 
 highlight_link "Temporal Web UI" "http://127.0.0.1:8233"
