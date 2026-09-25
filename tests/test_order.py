@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
-from src.entity import Order
+from src.entity import Order, OrderStatus
 from src.routers.order import create_order
 from src.schemas import OrderRequest
 
@@ -15,6 +15,7 @@ class OrderRouterTests(unittest.IsolatedAsyncioTestCase):
             user_id="user-123",
             created=created,
             expires_at=created + timedelta(days=1),
+            status=OrderStatus.STARTED,
         )
         order_service = AsyncMock()
         order_service.create.return_value = order
@@ -26,6 +27,7 @@ class OrderRouterTests(unittest.IsolatedAsyncioTestCase):
 
         order_service.create.assert_awaited_once_with("user-123")
         self.assertEqual(result.user_id, "user-123")
+        self.assertEqual(result.status, OrderStatus.STARTED)
         self.assertIsInstance(result, Order)
         self.assertEqual(result.workflow_id, result.id)
 

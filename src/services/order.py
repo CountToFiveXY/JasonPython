@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from temporalio.client import Client as TemporalClient
 
-from src.entity import Order
+from src.entity import Order, OrderStatus
 from src.temporal.workflows.order import OrderWorkflow, OrderWorkflowInput
 
 
@@ -28,6 +28,7 @@ class OrderService:
             user_id=user_id,
             created=created,
             expires_at=created + timedelta(days=1),
+            status=OrderStatus.STARTED,
         )
 
         await self._temporal_client.start_workflow(
@@ -37,6 +38,7 @@ class OrderService:
                 user_id=order.user_id,
                 created=order.created.isoformat(),
                 expires_at=order.expires_at.isoformat(),
+                status=order.status.value,
                 collection=ORDER_COLLECTION,
             ),
             id=order.id,

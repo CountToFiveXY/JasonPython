@@ -16,6 +16,7 @@ def workflow_input() -> OrderWorkflowInput:
         user_id="user-123",
         created=created.isoformat(),
         expires_at=(created + timedelta(days=1)).isoformat(),
+        status="STARTED",
         collection="orders",
     )
 
@@ -33,6 +34,39 @@ class OrderWorkflowTests(unittest.IsolatedAsyncioTestCase):
     async def test_completion_activity_returns_order_result(self) -> None:
         result = await complete_order("order-123")
         self.assertEqual(result, "Order order-123 completed")
+
+    async def test_persists_started_then_completed_after_success(self) -> None:
+        workflow = OrderWorkflow()
+        await workflow.update_status("SUCCESS")
+        execute_activity = AsyncMock(
+            side_effect=["written", "Order order-123 completed", "updated"]
+        )
+
+        with (
+            patch(
+                "src.temporal.workflows.order.workflow.wait_condition",
+                AsyncMock(),
+            ),
+            patch(
+                "src.temporal.workflows.order.workflow.execute_activity",
+                execute_activity,
+            ),
+            patch(
+                "src.temporal.workflows.order.workflow.patched",
+                return_value=True,
+            ),
+        ):
+            result = await workflow.run(workflow_input())
+
+        self.assertEqual(result, "Order order-123 completed")
+        calls = execute_activity.await_args_list
+        initial_write = calls[0].args[1]
+        self.assertEqual(initial_write.fields["status"], "STARTED")
+        self.assertFalse(initial_write.merge)
+        self.assertEqual(calls[1].args, (complete_order, "order-123"))
+        completion_write = calls[2].args[1]
+        self.assertEqual(completion_write.fields, {"status": "COMPLETED"})
+        self.assertTrue(completion_write.merge)
 
     async def test_workflow_completes_with_timeout_result_after_one_hour(self) -> None:
         workflow = OrderWorkflow()

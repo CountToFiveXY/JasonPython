@@ -7,7 +7,7 @@ from src.entity.leaderboard import (
     LapTime,
     Track,
 )
-from src.entity.order import Order
+from src.entity.order import Order, OrderStatus
 from src.entity.ranking import CardType
 
 __all__ = [
@@ -17,5 +17,6 @@ __all__ = [
     "GameMap",
     "LapTime",
     "Order",
+    "OrderStatus",
     "Track",
 ]

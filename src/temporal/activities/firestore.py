@@ -18,6 +18,7 @@ class FirestoreDocumentWrite:
     document_id: str
     fields: dict[str, Any]
     timestamp_fields: list[str]
+    merge: bool = False
 
 
 @activity.defn
@@ -38,5 +39,5 @@ async def write_firestore_document(request: FirestoreDocumentWrite) -> str:
 
     client = firestore.client(app=firebase_app)
     document = client.collection(request.collection).document(request.document_id)
-    await asyncio.to_thread(document.set, fields)
+    await asyncio.to_thread(document.set, fields, merge=request.merge)
     return f"Wrote {request.collection}/{request.document_id}"

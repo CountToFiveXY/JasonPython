@@ -5,6 +5,7 @@ from src.services.order import (
     ORDER_COLLECTION,
     OrderService,
 )
+from src.entity import OrderStatus
 from src.temporal.workflows.order import OrderWorkflow, OrderWorkflowInput
 
 
@@ -21,6 +22,7 @@ class OrderServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(order.id, "12345678-1234-1234-1234-123456789abc")
         self.assertEqual(order.user_id, "user-123")
+        self.assertEqual(order.status, OrderStatus.STARTED)
         self.assertIsNotNone(order.created.tzinfo)
         self.assertEqual(
             (order.expires_at - order.created).total_seconds(),
@@ -36,6 +38,7 @@ class OrderServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(workflow_input.user_id, order.user_id)
         self.assertEqual(workflow_input.created, order.created.isoformat())
         self.assertEqual(workflow_input.expires_at, order.expires_at.isoformat())
+        self.assertEqual(workflow_input.status, "STARTED")
         self.assertEqual(workflow_input.collection, ORDER_COLLECTION)
         self.assertEqual(order_call.kwargs["id"], order.id)
 

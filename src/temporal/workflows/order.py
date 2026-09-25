@@ -19,6 +19,7 @@ class OrderWorkflowInput:
     created: str
     expires_at: str
     collection: str
+    status: str = "STARTED"
 
 
 @workflow.defn
@@ -43,6 +44,7 @@ class OrderWorkflow:
                     "user_id": request.user_id,
                     "created": request.created,
                     "expires_at": request.expires_at,
+                    "status": request.status,
                 },
                 timestamp_fields=["created", "expires_at"],
             ),
@@ -58,8 +60,22 @@ class OrderWorkflow:
         except asyncio.TimeoutError:
             return f"Order {request.order_id} timed out waiting for SUCCESS"
 
-        return await workflow.execute_activity(
+        result = await workflow.execute_activity(
             complete_order,
             request.order_id,
             start_to_close_timeout=timedelta(seconds=30),
         )
+
+        if workflow.patched("order-status-completed"):
+            await workflow.execute_activity(
+                write_firestore_document,
+                FirestoreDocumentWrite(
+                    collection=request.collection,
+                    document_id=request.order_id,
+                    fields={"status": "COMPLETED"},
+                    timestamp_fields=[],
+                    merge=True,
+                ),
+                start_to_close_timeout=timedelta(seconds=30),
+            )
+        return result
