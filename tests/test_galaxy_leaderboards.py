@@ -80,6 +80,7 @@ class GalaxyLeaderboardTests(unittest.TestCase):
             ["rank:1", "10%", "100%"],
         )
         self.assertEqual(result[0]["event"]["name"], "OKTOBER FAST TLE")
+        self.assertEqual(result[0]["event"]["type"], "LIMITED_TIME_EVENT")
         self.assertEqual(result[0]["season"]["name"], "SUNSET SPEEDWAY")
         self.assertEqual(result[0]["tiers"][1]["time"], "1:04.626")
 

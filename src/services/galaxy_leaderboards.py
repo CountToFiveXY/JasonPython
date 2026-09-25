@@ -164,6 +164,8 @@ class GalaxyLeaderboardService:
             "id": str(record["id"]),
             "name": str(record["name"]),
             "end_date": record["end_date"],
+            "type": record.get("type"),
+            "subtype": record.get("subtype"),
         }
 
     @staticmethod

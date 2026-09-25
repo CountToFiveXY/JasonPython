@@ -31,6 +31,8 @@ class GalaxyLeaderboardContext(BaseModel):
     id: str
     name: str
     end_date: date
+    type: str | None = None
+    subtype: str | None = None
 
 
 class GalaxyLeaderboard(BaseModel):
