@@ -1,4 +1,5 @@
 aiokafka
+certifi
 fastapi
 firebase-admin
 google-cloud-vision

@@ -1,4 +1,6 @@
-"""HTTP schemas for ranking image generation."""
+"""HTTP schemas for ranking cards and the Galaxy Lens leaderboard feed."""
+
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -17,3 +19,31 @@ class RankingRequest(BaseModel):
         if not value:
             raise ValueError("car must not be blank")
         return value
+
+
+class GalaxyLeaderboardTier(BaseModel):
+    label: str
+    rank: int = Field(ge=0)
+    time: str | None = None
+
+
+class GalaxyLeaderboardContext(BaseModel):
+    id: str
+    name: str
+    end_date: date
+
+
+class GalaxyLeaderboard(BaseModel):
+    id: int
+    name: str
+    total_participants: int = Field(ge=0)
+    status: str
+    updated_at: datetime
+    tiers: list[GalaxyLeaderboardTier]
+    event: GalaxyLeaderboardContext | None = None
+    season: GalaxyLeaderboardContext | None = None
+
+
+class GalaxyLeaderboardListResponse(BaseModel):
+    source: str
+    leaderboards: list[GalaxyLeaderboard]

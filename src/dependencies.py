@@ -16,6 +16,7 @@ from src.infrastructure.clients import (
 )
 from src.services import (
     HealthService,
+    GalaxyLeaderboardService,
     HelloService,
     ImageService,
     LeaderboardService,
@@ -79,6 +80,12 @@ def get_ranking_service() -> RankingService:
     """Build the stateless ranking image service."""
 
     return RankingService()
+
+
+def get_galaxy_leaderboard_service() -> GalaxyLeaderboardService:
+    """Build the read-only Galaxy Lens leaderboard client."""
+
+    return GalaxyLeaderboardService()
 
 
 def get_text_recognition_service(

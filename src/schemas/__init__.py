@@ -27,7 +27,13 @@ from src.schemas.leaderboard import (
 )
 from src.schemas.messages import MessageResponse
 from src.schemas.order import OrderRequest, OrderResponse
-from src.schemas.ranking import RankingRequest
+from src.schemas.ranking import (
+    GalaxyLeaderboard,
+    GalaxyLeaderboardContext,
+    GalaxyLeaderboardListResponse,
+    GalaxyLeaderboardTier,
+    RankingRequest,
+)
 from src.schemas.text_recognition import TextLineResponse, TextRecognitionResponse
 from src.schemas.url_shortening import ShortenRequest, ShortenResponse, ShortKey
 
@@ -36,6 +42,10 @@ __all__ = [
     "CarPath",
     "CarSummaryResponse",
     "HealthResponse",
+    "GalaxyLeaderboard",
+    "GalaxyLeaderboardContext",
+    "GalaxyLeaderboardListResponse",
+    "GalaxyLeaderboardTier",
     "Identifier",
     "LapTimeEntry",
     "LapTimeRequest",

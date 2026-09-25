@@ -99,6 +99,7 @@
 | `GET` | `/go/{shortKey}` | Eight-character short key | Opens the stored URL in a new browser tab, with a current-tab fallback. | [Guide](apis/url_shortening.md) |
 | `GET` | `/display` | None | Returns a JPEG image. | [Guide](apis/image.md) |
 | `POST` | `/v1/ranking` | JSON `total`, `type`, and `car` fields | Renders a ranking PNG. | [Guide](apis/ranking.md) |
+| `GET` | `/v1/ranking/leaderboards` | None | Loads normalized event leaderboards from Galaxy Lens. | [Guide](apis/ranking.md) |
 | `GET` | `/health` | None | Returns the application's health status. | [Guide](apis/health.md) |
 | `POST` | `/workflows/hello` | None | Starts `HelloWorkflow` and returns its result. | [Guide](apis/hello.md) |
 | `POST` | `/v1/order` | JSON `user_id` field | Creates an order and starts a signal-waiting `OrderWorkflow`. | [Guide](apis/order.md) |

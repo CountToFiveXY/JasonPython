@@ -1,6 +1,7 @@
 """Application services."""
 
 from src.services.health import HealthService
+from src.services.galaxy_leaderboards import GalaxyLeaderboardService
 from src.services.hello import HelloService
 from src.services.image import ImageService
 from src.services.leaderboard import LeaderboardService
@@ -12,6 +13,7 @@ from src.services.url_shortening import UrlShorteningService
 
 __all__ = [
     "HealthService",
+    "GalaxyLeaderboardService",
     "HelloService",
     "ImageService",
     "LeaderboardService",
