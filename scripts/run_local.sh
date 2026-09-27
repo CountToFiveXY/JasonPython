@@ -12,7 +12,8 @@ services_pid_file="$venv_dir/jasonapp-services.pid"
 redis_data_dir="${REDIS_DATA_DIR:-$(dirname "$project_dir")/redis}"
 firebase_credentials_default="$HOME/.config/jasonapp/service-account.json"
 kafka_bootstrap_servers="${KAFKA_BOOTSTRAP_SERVERS:-127.0.0.1:9092}"
-kafka_topic="${KAFKA_TOPIC:-backend-messages}"
+kafka_order_topic="${KAFKA_ORDER_TOPIC:-order-status}"
+kafka_scheduler_topic="${KAFKA_SCHEDULER_TOPIC:-scheduler-control}"
 redis_started=0
 kafka_started=0
 temporal_pid=""
@@ -272,11 +273,13 @@ if [[ "$kafka_bootstrap_servers" == "127.0.0.1:9092" ]]; then
         kafka_started=1
         wait_for_port 127.0.0.1 9092 Kafka
     fi
-    kafka-topics \
-        --bootstrap-server "$kafka_bootstrap_servers" \
-        --create \
-        --if-not-exists \
-        --topic "$kafka_topic"
+    for kafka_topic in "$kafka_order_topic" "$kafka_scheduler_topic"; do
+        kafka-topics \
+            --bootstrap-server "$kafka_bootstrap_servers" \
+            --create \
+            --if-not-exists \
+            --topic "$kafka_topic"
+    done
 else
     highlight "Using external Kafka broker: $kafka_bootstrap_servers"
 fi
