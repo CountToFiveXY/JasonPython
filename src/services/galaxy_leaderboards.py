@@ -52,7 +52,7 @@ class GalaxyLeaderboardService:
                 "official_leaderboard_snapshots",
                 (
                     "id,metric_type,tiers:official_leaderboard_tiers("
-                    "percentage,rank_target,rank,time_text,participant_count)"
+                    "percentage,rank_target,rank,time_text,score,participant_count)"
                 ),
             )
         }
@@ -117,6 +117,7 @@ class GalaxyLeaderboardService:
     ) -> dict:
         raw_tiers = record.get("tier_ranks") or {}
         snapshot_times = GalaxyLeaderboardService._snapshot_times(snapshot)
+        snapshot_scores = GalaxyLeaderboardService._snapshot_scores(snapshot)
         tiers = []
         for label, rank in raw_tiers.items():
             if rank is None:
@@ -126,6 +127,7 @@ class GalaxyLeaderboardService:
                     "label": label,
                     "rank": int(rank),
                     "time": snapshot_times.get(label),
+                    "score": snapshot_scores.get(label),
                 }
             )
         tiers.sort(key=lambda tier: GalaxyLeaderboardService._tier_sort_key(tier["label"]))
@@ -157,6 +159,24 @@ class GalaxyLeaderboardService:
             )
             if label and tier.get("time_text"):
                 result[label] = str(tier["time_text"])
+        return result
+
+    @staticmethod
+    def _snapshot_scores(snapshot: dict | None) -> dict[str, float]:
+        if not snapshot or snapshot.get("metric_type") != "score":
+            return {}
+        result = {}
+        for tier in snapshot.get("tiers") or []:
+            percentage = tier.get("percentage")
+            rank_target = tier.get("rank_target")
+            label = (
+                f"{percentage}%"
+                if percentage is not None
+                else f"rank:{rank_target}" if rank_target is not None else None
+            )
+            score = tier.get("score")
+            if label and score is not None:
+                result[label] = float(score)
         return result
 
     @staticmethod

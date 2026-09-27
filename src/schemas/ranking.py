@@ -25,6 +25,7 @@ class GalaxyLeaderboardTier(BaseModel):
     label: str
     rank: int = Field(ge=0)
     time: str | None = None
+    score: float | None = None
 
 
 class GalaxyLeaderboardContext(BaseModel):

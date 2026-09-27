@@ -1,4 +1,4 @@
-"""Map, track, and lap-time HTTP endpoints."""
+"""Gauntlet map, track, and lap-time HTTP endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -32,7 +32,7 @@ from src.services.leaderboard import (
 )
 
 
-router = APIRouter(prefix="/v1/leaderboard", tags=["Leaderboard"])
+router = APIRouter(prefix="/v1/gauntlet", tags=["Gauntlet"])
 
 
 @router.get("/maps", response_model=MapListResponse)

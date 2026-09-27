@@ -2,12 +2,12 @@
 
 `POST /v1/ranking` renders a 304 × 506 PNG image.
 
-## Galaxy Lens leaderboards
+## Galaxy Lens leaderboard
 
-`GET /v1/ranking/leaderboards` reads the public Galaxy Lens leaderboard feed
+`GET /v1/leaderboard` reads the public Galaxy Lens leaderboard feed
 and normalizes it for JasonApp. The response contains active and finished event
 leaderboards, their participant totals, update timestamps, and ordered ranking
-tiers. JasonUI requests this endpoint whenever the Ranking Card section becomes
+tiers. JasonUI requests this endpoint whenever the Leaderboard section becomes
 active, and also exposes a manual refresh button.
 
 The upstream Supabase URL and public anonymous key can be overridden with

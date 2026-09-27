@@ -20,6 +20,6 @@ and local startup instructions.
 - [Temporal reference](docs/depdency/temporal_reference.md)
 - [Firestore reference](docs/depdency/firestore_reference.md)
 - [Kafka reference](docs/depdency/kafka_reference.md)
-- [Leaderboard API](docs/apis/leaderboard.md)
+- [Gauntlet API](docs/apis/leaderboard.md)
 - [How to call the API](docs/how_to_call_api.md)
 - [Project reference](docs/project_reference.md)

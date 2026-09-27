@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from src.routers.ranking import list_galaxy_leaderboards
+from src.main import app
+from src.routers.galaxy_leaderboard import list_galaxy_leaderboards
 from src.services.galaxy_leaderboards import (
     GalaxyLeaderboardError,
     GalaxyLeaderboardService,
@@ -21,6 +22,14 @@ class FakeResponse(BytesIO):
 
 
 class GalaxyLeaderboardTests(unittest.TestCase):
+    def test_leaderboard_and_gauntlet_use_distinct_api_names(self) -> None:
+        paths = app.openapi()["paths"]
+
+        self.assertIn("/v1/leaderboard", paths)
+        self.assertIn("/v1/gauntlet/maps", paths)
+        self.assertNotIn("/v1/ranking/leaderboards", paths)
+        self.assertNotIn("/v1/leaderboard/maps", paths)
+
     def test_fetch_normalizes_and_sorts_tiers(self) -> None:
         payload = [
             {
@@ -57,6 +66,7 @@ class GalaxyLeaderboardTests(unittest.TestCase):
                                     "rank_target": None,
                                     "rank": 19286,
                                     "time_text": "1:04.626",
+                                    "score": None,
                                     "participant_count": 19286,
                                 }
                             ],
@@ -83,6 +93,79 @@ class GalaxyLeaderboardTests(unittest.TestCase):
         self.assertEqual(result[0]["event"]["type"], "LIMITED_TIME_EVENT")
         self.assertEqual(result[0]["season"]["name"], "SUNSET SPEEDWAY")
         self.assertEqual(result[0]["tiers"][1]["time"], "1:04.626")
+        self.assertIsNone(result[0]["tiers"][1]["score"])
+
+    def test_fetch_includes_scores_from_score_snapshot(self) -> None:
+        responses = [
+            FakeResponse(
+                json.dumps(
+                    [
+                        {
+                            "id": 256,
+                            "event_name": "IMS∧聚光灯",
+                            "bottom_rank": 39198,
+                            "total_participants": 39198,
+                            "tier_ranks": {"1%": 391, "100%": 39198},
+                            "status": "active",
+                            "updated_at": "2026-09-26T03:00:00+00:00",
+                            "associated_event_id": "spotlight-1",
+                            "associated_season_id": None,
+                            "official_snapshot_id": "snapshot-score",
+                        }
+                    ]
+                ).encode()
+            ),
+            FakeResponse(
+                json.dumps(
+                    [
+                        {
+                            "id": "spotlight-1",
+                            "name": "IMS Spotlight",
+                            "end_date": "2026-10-14",
+                            "type": "LIMITED_TIME_EVENT",
+                            "subtype": "spotlight",
+                        }
+                    ]
+                ).encode()
+            ),
+            FakeResponse(b"[]"),
+            FakeResponse(
+                json.dumps(
+                    [
+                        {
+                            "id": "snapshot-score",
+                            "metric_type": "score",
+                            "tiers": [
+                                {
+                                    "percentage": 1,
+                                    "rank_target": None,
+                                    "rank": 391,
+                                    "time_text": None,
+                                    "score": 14519,
+                                    "participant_count": 39198,
+                                },
+                                {
+                                    "percentage": 100,
+                                    "rank_target": None,
+                                    "rank": 39198,
+                                    "time_text": None,
+                                    "score": 880,
+                                    "participant_count": 39198,
+                                },
+                            ],
+                        }
+                    ]
+                ).encode()
+            ),
+        ]
+
+        with patch("src.services.galaxy_leaderboards.urlopen", side_effect=responses):
+            result = GalaxyLeaderboardService().fetch()
+
+        self.assertEqual(result[0]["tiers"][0]["rank"], 391)
+        self.assertEqual(result[0]["tiers"][0]["score"], 14519.0)
+        self.assertIsNone(result[0]["tiers"][0]["time"])
+        self.assertEqual(result[0]["tiers"][1]["score"], 880.0)
 
     def test_router_maps_upstream_failure_to_bad_gateway(self) -> None:
         class FailingService:

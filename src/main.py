@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from src.infrastructure.clients import lifespan
 from src.routers import (
+    galaxy_leaderboard,
     health,
     hello,
     image,
@@ -22,6 +23,7 @@ app.include_router(image.router)
 app.include_router(health.router)
 app.include_router(url_shortening.router)
 app.include_router(ranking.router)
+app.include_router(galaxy_leaderboard.router)
 app.include_router(messages.router)
 app.include_router(leaderboard.router)
 app.include_router(text_recognition.router)

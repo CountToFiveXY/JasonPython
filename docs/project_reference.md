@@ -99,19 +99,19 @@
 | `GET` | `/go/{shortKey}` | Eight-character short key | Opens the stored URL in a new browser tab, with a current-tab fallback. | [Guide](apis/url_shortening.md) |
 | `GET` | `/display` | None | Returns a JPEG image. | [Guide](apis/image.md) |
 | `POST` | `/v1/ranking` | JSON `total`, `type`, and `car` fields | Renders a ranking PNG. | [Guide](apis/ranking.md) |
-| `GET` | `/v1/ranking/leaderboards` | None | Loads normalized event leaderboards from Galaxy Lens. | [Guide](apis/ranking.md) |
+| `GET` | `/v1/leaderboard` | None | Loads normalized event leaderboards from Galaxy Lens. | [Guide](apis/ranking.md) |
 | `GET` | `/health` | None | Returns the application's health status. | [Guide](apis/health.md) |
 | `POST` | `/workflows/hello` | None | Starts `HelloWorkflow` and returns its result. | [Guide](apis/hello.md) |
 | `POST` | `/v1/order` | JSON `user_id` field | Creates an order and starts a signal-waiting `OrderWorkflow`. | [Guide](apis/order.md) |
 | `POST` | `/v1/messages` | JSON `id` and `status` fields | Publishes an order status for the Kafka worker. | [Guide](apis/messages.md) |
-| `GET` | `/v1/leaderboard/maps` | None | Lists the maps, ordered by name. | [Guide](apis/leaderboard.md) |
-| `GET` | `/v1/leaderboard/cars` | None | Lists every car holding a time, for the car selector. | [Guide](apis/leaderboard.md) |
-| `POST` | `/v1/leaderboard/maps` | JSON `name` and two `tracks` names | Creates a map and its fixed pair of tracks. | [Guide](apis/leaderboard.md) |
-| `GET` | `/v1/leaderboard/maps/{map_id}` | Map identifier | Returns every recorded time on each track, fastest first. | [Guide](apis/leaderboard.md) |
-| `GET` | `/v1/leaderboard/tracks` | None | Lists every track with its map, for a selector. | [Guide](apis/leaderboard.md) |
-| `POST` | `/v1/leaderboard/tracks/lookup` | JSON `names` list | Returns the leaderboards for named tracks, across maps. | [Guide](apis/leaderboard.md) |
-| `PUT` | `/v1/leaderboard/maps/{map_id}/tracks/{track_id}/times` | JSON `car` and `seconds` fields | Replaces a car's time on a track. | [Guide](apis/leaderboard.md) |
-| `DELETE` | `/v1/leaderboard/maps/{map_id}/tracks/{track_id}/times/{car}` | Map, track, and car | Removes a car's time from a track. | [Guide](apis/leaderboard.md) |
+| `GET` | `/v1/gauntlet/maps` | None | Lists the maps, ordered by name. | [Guide](apis/leaderboard.md) |
+| `GET` | `/v1/gauntlet/cars` | None | Lists every car holding a time, for the car selector. | [Guide](apis/leaderboard.md) |
+| `POST` | `/v1/gauntlet/maps` | JSON `name` and two `tracks` names | Creates a map and its fixed pair of tracks. | [Guide](apis/leaderboard.md) |
+| `GET` | `/v1/gauntlet/maps/{map_id}` | Map identifier | Returns every recorded time on each track, fastest first. | [Guide](apis/leaderboard.md) |
+| `GET` | `/v1/gauntlet/tracks` | None | Lists every track with its map, for a selector. | [Guide](apis/leaderboard.md) |
+| `POST` | `/v1/gauntlet/tracks/lookup` | JSON `names` list | Returns the leaderboards for named tracks, across maps. | [Guide](apis/leaderboard.md) |
+| `PUT` | `/v1/gauntlet/maps/{map_id}/tracks/{track_id}/times` | JSON `car` and `seconds` fields | Replaces a car's time on a track. | [Guide](apis/leaderboard.md) |
+| `DELETE` | `/v1/gauntlet/maps/{map_id}/tracks/{track_id}/times/{car}` | Map, track, and car | Removes a car's time from a track. | [Guide](apis/leaderboard.md) |
 | `POST` | `/v1/text-recognition` | Image bytes as the body | Reads the words out of an image. | [Guide](apis/text_recognition.md) |
 
 ## Implementation

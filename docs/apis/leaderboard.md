@@ -1,6 +1,6 @@
-# Leaderboard API
+# Gauntlet API
 
-The leaderboard stores maps, the tracks that belong to them, and the fastest
+The Gauntlet tool stores maps, the tracks that belong to them, and the fastest
 car times recorded on each track. Cloud Firestore holds the data, so times
 survive restarts and can be inspected in the Firebase console.
 
@@ -27,7 +27,7 @@ car holds at most one time per track.
 ## List the cars
 
 ```bash
-curl http://127.0.0.1:8000/v1/leaderboard/cars
+curl http://127.0.0.1:8000/v1/gauntlet/cars
 ```
 
 ```json
@@ -45,7 +45,7 @@ number of recorded times rather than the number of maps.
 ## Add a map
 
 ```bash
-curl -X POST http://127.0.0.1:8000/v1/leaderboard/maps \
+curl -X POST http://127.0.0.1:8000/v1/gauntlet/maps \
   -H 'Content-Type: application/json' \
   -d '{"name":"New York","tracks":["A park In A run","Harbor Sprint"]}'
 ```
@@ -69,7 +69,7 @@ A map whose name is already taken responds with HTTP `409 Conflict`.
 ## List the maps
 
 ```bash
-curl http://127.0.0.1:8000/v1/leaderboard/maps
+curl http://127.0.0.1:8000/v1/gauntlet/maps
 ```
 
 ```json
@@ -90,7 +90,7 @@ blank `chinese_name` and no release order.
 ## Read a map's leaderboards
 
 ```bash
-curl http://127.0.0.1:8000/v1/leaderboard/maps/new-york
+curl http://127.0.0.1:8000/v1/gauntlet/maps/new-york
 ```
 
 Each track lists every car that holds a time on it, fastest first and
@@ -117,7 +117,7 @@ ranked from one:
 ## List every track
 
 ```bash
-curl http://127.0.0.1:8000/v1/leaderboard/tracks
+curl http://127.0.0.1:8000/v1/gauntlet/tracks
 ```
 
 ```json
@@ -139,7 +139,7 @@ behind a console edit.
 ## Look up tracks by name
 
 ```bash
-curl -X POST http://127.0.0.1:8000/v1/leaderboard/tracks/lookup \
+curl -X POST http://127.0.0.1:8000/v1/gauntlet/tracks/lookup \
   -H 'Content-Type: application/json' \
   -d '{"names":["WATERSLIDE WHIRL","LEAP OF FAITH","NOT A TRACK"]}'
 ```
@@ -185,7 +185,7 @@ one per track — and the map reads come from the Redis cache when warm.
 
 ```bash
 curl -X PUT \
-  http://127.0.0.1:8000/v1/leaderboard/maps/new-york/tracks/a-park-in-a-run/times \
+  http://127.0.0.1:8000/v1/gauntlet/maps/new-york/tracks/a-park-in-a-run/times \
   -H 'Content-Type: application/json' \
   -d '{"car":"C2","seconds":19.62}'
 ```
@@ -198,7 +198,7 @@ recorded in seconds, rounded to three decimal places.
 
 ```bash
 curl -X DELETE \
-  http://127.0.0.1:8000/v1/leaderboard/maps/new-york/tracks/a-park-in-a-run/times/C2
+  http://127.0.0.1:8000/v1/gauntlet/maps/new-york/tracks/a-park-in-a-run/times/C2
 ```
 
 The response is the track's refreshed leaderboard. A car with no time on the
