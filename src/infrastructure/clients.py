@@ -15,6 +15,7 @@ from redis.asyncio import Redis
 from temporalio.client import Client
 
 from src.infrastructure.cache_watcher import LeaderboardCacheWatcher
+from src.infrastructure.scheduler import run_local_scheduler
 from src.messaging.config import KAFKA_BOOTSTRAP_SERVERS
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
@@ -40,9 +41,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.temporal = temporal_client
     app.state.kafka_producer = kafka_producer
     app.state.cache_watcher = _start_cache_watcher(app, redis_client)
+    app.state.local_scheduler = asyncio.create_task(
+        run_local_scheduler(),
+        name="local-scheduler",
+    )
     try:
         yield
     finally:
+        app.state.local_scheduler.cancel()
+        await asyncio.gather(app.state.local_scheduler, return_exceptions=True)
         if app.state.cache_watcher is not None:
             app.state.cache_watcher.stop()
         await kafka_producer.stop()
