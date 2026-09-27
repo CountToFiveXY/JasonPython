@@ -94,6 +94,50 @@ class GalaxyLeaderboardTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.status_code, 502)
 
+    def test_fetch_adds_active_grand_prix_with_requested_tiers(self) -> None:
+        responses = [
+            FakeResponse(b"[]"),
+            FakeResponse(
+                json.dumps(
+                    [
+                        {
+                            "id": "56b018c6-690d-4513-aace-bd1b97670f1d",
+                            "name": "KIMERA EVO37 GRAND PRIX",
+                            "start_date": "2000-01-01",
+                            "end_date": "2100-01-01",
+                            "type": "GRAND_PRIX",
+                            "subtype": None,
+                            "season_id": "season-1",
+                        }
+                    ]
+                ).encode()
+            ),
+            FakeResponse(
+                json.dumps(
+                    [
+                        {
+                            "id": "season-1",
+                            "name": "SUNSET SPEEDWAY",
+                            "end_date": "2100-01-01",
+                        }
+                    ]
+                ).encode()
+            ),
+            FakeResponse(b"[]"),
+        ]
+
+        with patch("src.services.galaxy_leaderboards.urlopen", side_effect=responses):
+            result = GalaxyLeaderboardService().fetch()
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["name"], "KIMERA EVO37 GRAND PRIX")
+        self.assertEqual(result[0]["event"]["type"], "GRAND_PRIX")
+        self.assertEqual(
+            [tier["label"] for tier in result[0]["tiers"]],
+            ["1%", "5%", "10%", "25%", "75%", "100%"],
+        )
+        self.assertTrue(all(tier["rank"] is None for tier in result[0]["tiers"]))
+
 
 if __name__ == "__main__":
     unittest.main()

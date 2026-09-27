@@ -3,7 +3,7 @@
 import json
 import os
 import ssl
-from datetime import datetime
+from datetime import date, datetime, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -18,6 +18,8 @@ DEFAULT_ANON_KEY = (
     "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpmbHB6dm1wamVlcWZrdnFwcHVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc4NDE1NDcsImV4cCI6MjA3MzQxNzU0N30."
     "WM-5QGlrD1c7-AP7l61FTS79dJQlFAzt_VHQFw1MuNo"
 )
+
+GRAND_PRIX_TIERS = ("1%", "5%", "10%", "25%", "75%", "100%")
 
 
 class GalaxyLeaderboardError(RuntimeError):
@@ -39,9 +41,12 @@ class GalaxyLeaderboardService:
             order="updated_at.desc",
             filters={"status": "eq.active"},
         )
+        event_rows = self._read_table(
+            "events", "id,name,start_date,end_date,type,subtype,season_id"
+        )
         events = {
             row["id"]: row
-            for row in self._read_table("events", "id,name,end_date,type,subtype")
+            for row in event_rows
         }
         seasons = {
             row["id"]: row
@@ -66,6 +71,18 @@ class GalaxyLeaderboardService:
             )
             for record in leaderboards
         ]
+        linked_event_ids = {
+            record.get("associated_event_id")
+            for record in leaderboards
+            if record.get("associated_event_id")
+        }
+        normalized.extend(
+            self._grand_prix_placeholder(event, seasons.get(event.get("season_id")))
+            for event in event_rows
+            if str(event.get("type") or "").upper() == "GRAND_PRIX"
+            and event["id"] not in linked_event_ids
+            and self._is_active_event(event)
+        )
         normalized.sort(key=lambda row: self._sort_key(row, events))
         return normalized
 
@@ -115,13 +132,20 @@ class GalaxyLeaderboardService:
         raw_tiers = record.get("tier_ranks") or {}
         snapshot_times = GalaxyLeaderboardService._snapshot_times(snapshot)
         tiers = []
-        for label, rank in raw_tiers.items():
-            if rank is None:
+        is_grand_prix = str((event or {}).get("type") or "").upper() == "GRAND_PRIX"
+        labels = (
+            GRAND_PRIX_TIERS
+            if is_grand_prix
+            else raw_tiers.keys()
+        )
+        for label in labels:
+            rank = raw_tiers.get(label)
+            if rank is None and not is_grand_prix:
                 continue
             tiers.append(
                 {
                     "label": label,
-                    "rank": int(rank),
+                    "rank": int(rank) if rank is not None else None,
                     "time": snapshot_times.get(label),
                 }
             )
@@ -135,6 +159,33 @@ class GalaxyLeaderboardService:
             "status": str(record.get("status") or "finished"),
             "updated_at": record["updated_at"],
             "tiers": tiers,
+            "event": GalaxyLeaderboardService._context(event),
+            "season": GalaxyLeaderboardService._context(season),
+        }
+
+    @staticmethod
+    def _is_active_event(event: dict, today: date | None = None) -> bool:
+        today = today or datetime.now(timezone.utc).date()
+        try:
+            start = date.fromisoformat(str(event["start_date"]))
+            end = date.fromisoformat(str(event["end_date"]))
+        except (KeyError, TypeError, ValueError):
+            return False
+        return start <= today <= end
+
+    @staticmethod
+    def _grand_prix_placeholder(event: dict, season: dict | None) -> dict:
+        stable_id = -int(str(event["id"]).replace("-", "")[:15], 16)
+        return {
+            "id": stable_id,
+            "name": str(event.get("name") or "Grand Prix"),
+            "total_participants": 0,
+            "status": "active",
+            "updated_at": f'{event["start_date"]}T00:00:00+00:00',
+            "tiers": [
+                {"label": label, "rank": None, "time": None}
+                for label in GRAND_PRIX_TIERS
+            ],
             "event": GalaxyLeaderboardService._context(event),
             "season": GalaxyLeaderboardService._context(season),
         }
@@ -177,6 +228,7 @@ class GalaxyLeaderboardService:
         event_type = str((source or {}).get("type") or "").upper()
         priority = {
             "SPECIAL_EVENT": 0,
+            "GRAND_PRIX": 0,
             "STAR_HUNT": 1,
             "EPIC_HUNT": 1,
             "CAR_HUNT": 1,

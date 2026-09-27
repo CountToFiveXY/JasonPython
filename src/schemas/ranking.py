@@ -23,7 +23,7 @@ class RankingRequest(BaseModel):
 
 class GalaxyLeaderboardTier(BaseModel):
     label: str
-    rank: int = Field(ge=0)
+    rank: int | None = Field(default=None, ge=0)
     time: str | None = None
 
 
