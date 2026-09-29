@@ -103,7 +103,7 @@
 | `GET` | `/health` | None | Returns the application's health status. | [Guide](apis/health.md) |
 | `POST` | `/workflows/hello` | None | Starts `HelloWorkflow` and returns its result. | [Guide](apis/hello.md) |
 | `POST` | `/v1/order` | JSON `user_id` field | Creates an order and starts a signal-waiting `OrderWorkflow`. | [Guide](apis/order.md) |
-| `POST` | `/v1/messages` | JSON `id` and `status` fields | Publishes an order status for the Kafka worker. | [Guide](apis/messages.md) |
+| `POST` | `/v1/messages` | Typed `EventType` and `detailed_payload` envelope | Routes order and scheduler events to their dedicated Kafka topics. | [Guide](apis/messages.md) |
 | `GET` | `/v1/gauntlet/maps` | None | Lists the maps, ordered by name. | [Guide](apis/leaderboard.md) |
 | `GET` | `/v1/gauntlet/cars` | None | Lists every car holding a time, for the car selector. | [Guide](apis/leaderboard.md) |
 | `POST` | `/v1/gauntlet/maps` | JSON `name` and two `tracks` names | Creates a map and its fixed pair of tracks. | [Guide](apis/leaderboard.md) |

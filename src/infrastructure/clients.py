@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import firebase_admin
-from aiokafka import AIOKafkaProducer
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from fastapi import FastAPI, HTTPException, Request, status
 from firebase_admin import firestore
 from google.auth.exceptions import DefaultCredentialsError
@@ -15,8 +15,16 @@ from redis.asyncio import Redis
 from temporalio.client import Client
 
 from src.infrastructure.cache_watcher import LeaderboardCacheWatcher
-from src.infrastructure.scheduler import run_local_scheduler
-from src.messaging.config import KAFKA_BOOTSTRAP_SERVERS
+from src.infrastructure.scheduler import (
+    LocalSchedulerController,
+    consume_scheduler_controls,
+    run_local_scheduler,
+)
+from src.messaging.config import (
+    KAFKA_BOOTSTRAP_SERVERS,
+    KAFKA_SCHEDULER_CONSUMER_GROUP,
+    KAFKA_SCHEDULER_TOPIC,
+)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 TEMPORAL_ADDRESS = os.getenv("TEMPORAL_ADDRESS", "127.0.0.1:7233")
@@ -37,19 +45,41 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         value_serializer=lambda value: json.dumps(value).encode("utf-8"),
     )
     await kafka_producer.start()
+    scheduler_consumer = AIOKafkaConsumer(
+        KAFKA_SCHEDULER_TOPIC,
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        group_id=KAFKA_SCHEDULER_CONSUMER_GROUP,
+        auto_offset_reset="latest",
+        value_deserializer=lambda value: json.loads(value.decode("utf-8")),
+    )
+    await scheduler_consumer.start()
+    scheduler_controller = LocalSchedulerController()
     app.state.redis = redis_client
     app.state.temporal = temporal_client
     app.state.kafka_producer = kafka_producer
     app.state.cache_watcher = _start_cache_watcher(app, redis_client)
+    app.state.scheduler_controller = scheduler_controller
     app.state.local_scheduler = asyncio.create_task(
-        run_local_scheduler(),
+        run_local_scheduler(
+            is_enabled=scheduler_controller.is_enabled,
+        ),
         name="local-scheduler",
+    )
+    app.state.scheduler_control_consumer = asyncio.create_task(
+        consume_scheduler_controls(scheduler_consumer, scheduler_controller),
+        name="scheduler-control-consumer",
     )
     try:
         yield
     finally:
         app.state.local_scheduler.cancel()
-        await asyncio.gather(app.state.local_scheduler, return_exceptions=True)
+        app.state.scheduler_control_consumer.cancel()
+        await asyncio.gather(
+            app.state.local_scheduler,
+            app.state.scheduler_control_consumer,
+            return_exceptions=True,
+        )
+        await scheduler_consumer.stop()
         if app.state.cache_watcher is not None:
             app.state.cache_watcher.stop()
         await kafka_producer.stop()

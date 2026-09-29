@@ -8,10 +8,10 @@ from temporalio.client import Client
 
 from src.messaging.config import (
     KAFKA_BOOTSTRAP_SERVERS,
-    KAFKA_CONSUMER_GROUP,
-    KAFKA_TOPIC,
+    KAFKA_ORDER_CONSUMER_GROUP,
+    KAFKA_ORDER_TOPIC,
 )
-from src.messaging.events import OrderStatus, OrderStatusEvent
+from src.messaging.events import OrderMessageEvent, OrderStatus
 from src.temporal.workflows.order import OrderWorkflow
 
 
@@ -19,14 +19,18 @@ TEMPORAL_ADDRESS = os.getenv("TEMPORAL_ADDRESS", "127.0.0.1:7233")
 TEMPORAL_NAMESPACE = os.getenv("TEMPORAL_NAMESPACE", "default")
 
 
-async def handle_message(event: dict, temporal_client: Client) -> None:
+async def handle_message(
+    event: dict,
+    temporal_client: Client,
+) -> None:
     """Signal the matching order workflow for a valid success event."""
     try:
-        order_event = OrderStatusEvent.model_validate(event)
+        message = OrderMessageEvent.model_validate(event)
     except ValidationError as exc:
         print(f"Ignoring invalid Kafka message: {exc}", flush=True)
         return
 
+    order_event = message.detailed_payload
     if order_event.status is not OrderStatus.SUCCESS:
         return
 
@@ -45,17 +49,17 @@ async def main() -> None:
         namespace=TEMPORAL_NAMESPACE,
     )
     consumer = AIOKafkaConsumer(
-        KAFKA_TOPIC,
+        KAFKA_ORDER_TOPIC,
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        group_id=KAFKA_CONSUMER_GROUP,
+        group_id=KAFKA_ORDER_CONSUMER_GROUP,
         auto_offset_reset="earliest",
         enable_auto_commit=False,
         value_deserializer=lambda value: json.loads(value.decode("utf-8")),
     )
     await consumer.start()
     print(
-        f"Kafka worker polling topic={KAFKA_TOPIC} "
-        f"group={KAFKA_CONSUMER_GROUP}",
+        f"Kafka worker polling topic={KAFKA_ORDER_TOPIC} "
+        f"group={KAFKA_ORDER_CONSUMER_GROUP}",
         flush=True,
     )
     try:

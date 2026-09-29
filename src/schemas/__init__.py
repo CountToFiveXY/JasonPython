@@ -25,7 +25,11 @@ from src.schemas.leaderboard import (
     ranked,
     track_leaderboard,
 )
-from src.schemas.messages import MessageResponse
+from src.schemas.messages import (
+    MessageResponse,
+    OrderMessageResponse,
+    SchedulingMessageResponse,
+)
 from src.schemas.order import OrderRequest, OrderResponse
 from src.schemas.ranking import (
     GalaxyLeaderboard,
@@ -54,6 +58,8 @@ __all__ = [
     "MapListResponse",
     "MapSummaryResponse",
     "MessageResponse",
+    "OrderMessageResponse",
+    "SchedulingMessageResponse",
     "OrderRequest",
     "OrderResponse",
     "RankingRequest",
