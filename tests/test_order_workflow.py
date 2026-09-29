@@ -51,10 +51,6 @@ class OrderWorkflowTests(unittest.IsolatedAsyncioTestCase):
                 "src.temporal.workflows.order.workflow.execute_activity",
                 execute_activity,
             ),
-            patch(
-                "src.temporal.workflows.order.workflow.patched",
-                return_value=True,
-            ),
         ):
             result = await workflow.run(workflow_input())
 

@@ -66,16 +66,15 @@ class OrderWorkflow:
             start_to_close_timeout=timedelta(seconds=30),
         )
 
-        if workflow.patched("order-status-completed"):
-            await workflow.execute_activity(
-                write_firestore_document,
-                FirestoreDocumentWrite(
-                    collection=request.collection,
-                    document_id=request.order_id,
-                    fields={"status": "COMPLETED"},
-                    timestamp_fields=[],
-                    merge=True,
-                ),
-                start_to_close_timeout=timedelta(seconds=30),
-            )
+        await workflow.execute_activity(
+            write_firestore_document,
+            FirestoreDocumentWrite(
+                collection=request.collection,
+                document_id=request.order_id,
+                fields={"status": "COMPLETED"},
+                timestamp_fields=[],
+                merge=True,
+            ),
+            start_to_close_timeout=timedelta(seconds=30),
+        )
         return result
