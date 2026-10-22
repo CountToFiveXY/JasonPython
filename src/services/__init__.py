@@ -1,25 +1,23 @@
 """Application services."""
 
 from src.services.health import HealthService
-from src.services.galaxy_leaderboards import GalaxyLeaderboardService
+from src.services.leaderboard import LeaderboardService
 from src.services.hello import HelloService
 from src.services.image import ImageService
-from src.services.leaderboard import LeaderboardService
+from src.services.gauntlet import GauntletService
 from src.services.messages import MessageService
 from src.services.order import OrderService
-from src.services.ranking import RankingService
 from src.services.text_recognition import TextRecognitionService
 from src.services.url_shortening import UrlShorteningService
 
 __all__ = [
     "HealthService",
-    "GalaxyLeaderboardService",
+    "LeaderboardService",
     "HelloService",
     "ImageService",
-    "LeaderboardService",
+    "GauntletService",
     "MessageService",
     "OrderService",
-    "RankingService",
     "TextRecognitionService",
     "UrlShorteningService",
 ]

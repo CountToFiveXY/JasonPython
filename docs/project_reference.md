@@ -5,90 +5,109 @@
 ```text
 .
 ├── src/
-│   ├── __init__.py
-│   ├── main.py
-│   ├── dependencies.py
 │   ├── entity/
 │   │   ├── __init__.py
-│   │   ├── leaderboard.py
-│   │   ├── order.py
-│   │   └── ranking.py
+│   │   ├── gauntlet.py
+│   │   └── order.py
 │   ├── infrastructure/
 │   │   ├── __init__.py
-│   │   ├── cache_watcher.py
-│   │   └── clients.py
+│   │   ├── clients.py
+│   │   ├── gauntlet_cache_watcher.py
+│   │   └── scheduler.py
+│   ├── messaging/
+│   │   ├── __init__.py
+│   │   ├── config.py
+│   │   ├── events.py
+│   │   └── worker.py
+│   ├── routers/
+│   │   ├── __init__.py
+│   │   ├── gauntlet.py
+│   │   ├── health.py
+│   │   ├── hello.py
+│   │   ├── image.py
+│   │   ├── leaderboard.py
+│   │   ├── messages.py
+│   │   ├── order.py
+│   │   ├── text_recognition.py
+│   │   └── url_shortening.py
 │   ├── schemas/
 │   │   ├── __init__.py
+│   │   ├── gauntlet.py
 │   │   ├── health.py
 │   │   ├── hello.py
 │   │   ├── leaderboard.py
 │   │   ├── messages.py
 │   │   ├── order.py
-│   │   ├── ranking.py
+│   │   ├── text_recognition.py
 │   │   └── url_shortening.py
 │   ├── services/
 │   │   ├── __init__.py
+│   │   ├── gauntlet.py
 │   │   ├── health.py
 │   │   ├── hello.py
 │   │   ├── image.py
 │   │   ├── leaderboard.py
 │   │   ├── messages.py
 │   │   ├── order.py
-│   │   ├── ranking.py
+│   │   ├── text_recognition.py
 │   │   └── url_shortening.py
-│   ├── routers/
-│   │   ├── __init__.py
-│   │   ├── url_shortening.py
-│   │   ├── image.py
-│   │   ├── leaderboard.py
-│   │   ├── messages.py
-│   │   ├── ranking.py
-│   │   ├── health.py
-│   │   ├── hello.py
-│   │   └── order.py
 │   ├── temporal/
-│   │   ├── __init__.py
-│   │   ├── worker.py
 │   │   ├── activities/
 │   │   │   ├── __init__.py
 │   │   │   ├── firestore.py
 │   │   │   ├── greeting.py
 │   │   │   ├── hello.py
 │   │   │   └── order.py
-│   │   └── workflows/
-│   │       ├── __init__.py
-│   │       ├── greeting.py
-│   │       ├── hello.py
-│   │       └── order.py
-│   └── messaging/
-│       ├── __init__.py
-│       ├── config.py
-│       ├── events.py
-│       └── worker.py
+│   │   ├── workflows/
+│   │   │   ├── __init__.py
+│   │   │   ├── greeting.py
+│   │   │   ├── hello.py
+│   │   │   └── order.py
+│   │   ├── __init__.py
+│   │   └── worker.py
+│   ├── __init__.py
+│   ├── dependencies.py
+│   └── main.py
 ├── requirements.txt
 ├── README.md
 ├── scripts/
 │   └── run_local.sh
 ├── assets/
 │   └── metroidzm_map.jpg
-└── docs/
-    ├── how_to_run_server.md
-    ├── depdency/
-    │   ├── redis_reference.md
-    │   ├── temporal_reference.md
-    │   ├── firestore_reference.md
-    │   └── kafka_reference.md
-    ├── how_to_call_api.md
-    ├── project_reference.md
-    └── apis/
-        ├── leaderboard.md
-        ├── ranking.md
-        ├── order.md
-        ├── messages.md
-        ├── url_shortening.md
-        ├── image.md
-        ├── health.md
-        └── hello.md
+├── docs/
+│   ├── apis/
+│   │   ├── gauntlet.md
+│   │   ├── health.md
+│   │   ├── hello.md
+│   │   ├── image.md
+│   │   ├── leaderboard.md
+│   │   ├── messages.md
+│   │   ├── order.md
+│   │   ├── text_recognition.md
+│   │   └── url_shortening.md
+│   ├── depdency/
+│   │   ├── firestore_reference.md
+│   │   ├── kafka_reference.md
+│   │   ├── redis_reference.md
+│   │   └── temporal_reference.md
+│   ├── how_to_call_api.md
+│   ├── how_to_run_server.md
+│   └── project_reference.md
+└── tests/
+    ├── __init__.py
+    ├── test_clients.py
+    ├── test_firestore_activity.py
+    ├── test_gauntlet.py
+    ├── test_gauntlet_cache_watcher.py
+    ├── test_health.py
+    ├── test_kafka_messages.py
+    ├── test_leaderboard.py
+    ├── test_order.py
+    ├── test_order_service.py
+    ├── test_order_workflow.py
+    ├── test_scheduler.py
+    ├── test_text_recognition.py
+    └── test_url_shortening.py
 ```
 
 ## Endpoints
@@ -98,20 +117,19 @@
 | `POST` | `/v1/shorten` | JSON `url` field | Creates a unique eight-character key for a URL. | [Guide](apis/url_shortening.md) |
 | `GET` | `/go/{shortKey}` | Eight-character short key | Opens the stored URL in a new browser tab, with a current-tab fallback. | [Guide](apis/url_shortening.md) |
 | `GET` | `/display` | None | Returns a JPEG image. | [Guide](apis/image.md) |
-| `POST` | `/v1/ranking` | JSON `total`, `type`, and `car` fields | Renders a ranking PNG. | [Guide](apis/ranking.md) |
-| `GET` | `/v1/leaderboard` | None | Loads normalized event leaderboards from Galaxy Lens. | [Guide](apis/ranking.md) |
+| `GET` | `/v1/leaderboard` | None | Loads normalized event leaderboards from Galaxy Lens. | [Guide](apis/leaderboard.md) |
 | `GET` | `/health` | None | Returns the application's health status. | [Guide](apis/health.md) |
 | `POST` | `/workflows/hello` | None | Starts `HelloWorkflow` and returns its result. | [Guide](apis/hello.md) |
 | `POST` | `/v1/order` | JSON `user_id` field | Creates an order and starts a signal-waiting `OrderWorkflow`. | [Guide](apis/order.md) |
 | `POST` | `/v1/messages` | Typed `EventType` and `detailed_payload` envelope | Routes order and scheduler events to their dedicated Kafka topics. | [Guide](apis/messages.md) |
-| `GET` | `/v1/gauntlet/maps` | None | Lists the maps, ordered by name. | [Guide](apis/leaderboard.md) |
-| `GET` | `/v1/gauntlet/cars` | None | Lists every car holding a time, for the car selector. | [Guide](apis/leaderboard.md) |
-| `POST` | `/v1/gauntlet/maps` | JSON `name` and two `tracks` names | Creates a map and its fixed pair of tracks. | [Guide](apis/leaderboard.md) |
-| `GET` | `/v1/gauntlet/maps/{map_id}` | Map identifier | Returns every recorded time on each track, fastest first. | [Guide](apis/leaderboard.md) |
-| `GET` | `/v1/gauntlet/tracks` | None | Lists every track with its map, for a selector. | [Guide](apis/leaderboard.md) |
-| `POST` | `/v1/gauntlet/tracks/lookup` | JSON `names` list | Returns the leaderboards for named tracks, across maps. | [Guide](apis/leaderboard.md) |
-| `PUT` | `/v1/gauntlet/maps/{map_id}/tracks/{track_id}/times` | JSON `car` and `seconds` fields | Replaces a car's time on a track. | [Guide](apis/leaderboard.md) |
-| `DELETE` | `/v1/gauntlet/maps/{map_id}/tracks/{track_id}/times/{car}` | Map, track, and car | Removes a car's time from a track. | [Guide](apis/leaderboard.md) |
+| `GET` | `/v1/gauntlet/maps` | None | Lists the maps, ordered by name. | [Guide](apis/gauntlet.md) |
+| `GET` | `/v1/gauntlet/cars` | None | Lists every car holding a time, for the car selector. | [Guide](apis/gauntlet.md) |
+| `POST` | `/v1/gauntlet/maps` | JSON `name` and two `tracks` names | Creates a map and its fixed pair of tracks. | [Guide](apis/gauntlet.md) |
+| `GET` | `/v1/gauntlet/maps/{map_id}` | Map identifier | Returns every recorded time on each track, fastest first. | [Guide](apis/gauntlet.md) |
+| `GET` | `/v1/gauntlet/tracks` | None | Lists every track with its map, for a selector. | [Guide](apis/gauntlet.md) |
+| `POST` | `/v1/gauntlet/tracks/lookup` | JSON `names` list | Returns the leaderboards for named tracks, across maps. | [Guide](apis/gauntlet.md) |
+| `PUT` | `/v1/gauntlet/maps/{map_id}/tracks/{track_id}/times` | JSON `car` and `seconds` fields | Replaces a car's time on a track. | [Guide](apis/gauntlet.md) |
+| `DELETE` | `/v1/gauntlet/maps/{map_id}/tracks/{track_id}/times/{car}` | Map, track, and car | Removes a car's time from a track. | [Guide](apis/gauntlet.md) |
 | `POST` | `/v1/text-recognition` | Image bytes as the body | Reads the words out of an image. | [Guide](apis/text_recognition.md) |
 
 ## Implementation
@@ -130,13 +148,13 @@ stores each code-to-URL mapping with an atomic `SET ... NX` command so an
 existing code cannot be overwritten.
 `src/infrastructure/clients.py` manages the asynchronous Redis and Kafka clients for
 the FastAPI lifespan. It also connects FastAPI to Temporal Server and Firestore,
-and starts `src/infrastructure/cache_watcher.py`, which listens to Firestore and
-clears cached leaderboard reads when their documents change.
+and starts `src/infrastructure/gauntlet_cache_watcher.py`, which listens to Firestore and
+clears cached Gauntlet reads when their documents change.
 `src/temporal/worker.py` registers the capability-specific workflows and
 activities under `src/temporal/workflows/` and `src/temporal/activities/`.
 `src/messaging/worker.py` consumes Kafka status events and signals the matching
-order workflow. The leaderboard API is the one feature that reads and writes
-Firestore directly from a request: `LeaderboardService` receives the client
+order workflow. The Gauntlet API is the one feature that reads and writes
+Firestore directly from a request: `GauntletService` receives the client
 from `get_firestore` and runs the blocking Firestore calls on worker threads.
 
 ## Interactive API documentation

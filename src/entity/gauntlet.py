@@ -1,4 +1,4 @@
-"""Leaderboard entities stored in Firestore."""
+"""Gauntlet entities stored in Firestore."""
 
 from pydantic import BaseModel
 

@@ -14,7 +14,7 @@ from google.cloud.firestore_v1 import Client as FirestoreClient
 from redis.asyncio import Redis
 from temporalio.client import Client
 
-from src.infrastructure.cache_watcher import LeaderboardCacheWatcher
+from src.infrastructure.gauntlet_cache_watcher import GauntletCacheWatcher
 from src.infrastructure.scheduler import (
     LocalSchedulerController,
     consume_scheduler_controls,
@@ -99,15 +99,15 @@ def _create_firestore_client() -> FirestoreClient:
 def _start_cache_watcher(
     app: FastAPI,
     redis_client: Redis,
-) -> LeaderboardCacheWatcher | None:
-    """Listen to Firestore so outside edits clear the leaderboard cache.
+) -> GauntletCacheWatcher | None:
+    """Listen to Firestore so outside edits clear the Gauntlet cache.
 
-    Without credentials the leaderboard is unavailable anyway, so the API still
+    Without credentials Gauntlet is unavailable anyway, so the API still
     starts and the cache falls back to expiring on its own.
     """
 
     try:
-        watcher = LeaderboardCacheWatcher(
+        watcher = GauntletCacheWatcher(
             _create_firestore_client(),
             redis_client,
             asyncio.get_running_loop(),
@@ -115,14 +115,14 @@ def _start_cache_watcher(
         watcher.start()
     except DefaultCredentialsError:
         print(
-            "Firestore credentials are not configured; the leaderboard cache "
+            "Firestore credentials are not configured; the Gauntlet cache "
             "will expire on its own instead of following Firestore changes.",
             flush=True,
         )
         return None
 
     app.state.firestore = watcher._firestore
-    print("Watching Firestore for leaderboard changes.", flush=True)
+    print("Watching Firestore for Gauntlet changes.", flush=True)
     return watcher
 
 

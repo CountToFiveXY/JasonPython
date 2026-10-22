@@ -6,10 +6,10 @@ Each endpoint has its own guide:
 
 - [URL shortening API](apis/url_shortening.md)
 - [Image API](apis/image.md)
-- [Ranking image API](apis/ranking.md)
+- [Galaxy Lens leaderboard API](apis/leaderboard.md)
 - [Order API](apis/order.md)
 - [Messages API](apis/messages.md)
-- [Leaderboard API](apis/leaderboard.md)
+- [Gauntlet API](apis/gauntlet.md)
 - [Text recognition API](apis/text_recognition.md)
 - [Health check API](apis/health.md)
 - [Hello workflow API](apis/hello.md)

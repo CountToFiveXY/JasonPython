@@ -16,13 +16,12 @@ from src.infrastructure.clients import (
 )
 from src.services import (
     HealthService,
-    GalaxyLeaderboardService,
+    LeaderboardService,
     HelloService,
     ImageService,
-    LeaderboardService,
+    GauntletService,
     MessageService,
     OrderService,
-    RankingService,
     TextRecognitionService,
     UrlShorteningService,
 )
@@ -51,13 +50,13 @@ def get_image_service() -> ImageService:
     return ImageService()
 
 
-def get_leaderboard_service(
+def get_gauntlet_service(
     firestore_client: FirestoreClient = Depends(get_firestore),
     redis_client: Redis = Depends(get_redis),
-) -> LeaderboardService:
-    """Build a leaderboard service around shared Firestore and Redis clients."""
+) -> GauntletService:
+    """Build a Gauntlet service around shared Firestore and Redis clients."""
 
-    return LeaderboardService(firestore_client, redis_client)
+    return GauntletService(firestore_client, redis_client)
 
 
 def get_message_service(
@@ -76,16 +75,10 @@ def get_order_service(
     return OrderService(temporal_client)
 
 
-def get_ranking_service() -> RankingService:
-    """Build the stateless ranking image service."""
-
-    return RankingService()
-
-
-def get_galaxy_leaderboard_service() -> GalaxyLeaderboardService:
+def get_leaderboard_service() -> LeaderboardService:
     """Build the read-only Galaxy Lens leaderboard client."""
 
-    return GalaxyLeaderboardService()
+    return LeaderboardService()
 
 
 def get_text_recognition_service(

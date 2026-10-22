@@ -1,585 +1,223 @@
+import json
 import unittest
-from types import SimpleNamespace
+from io import BytesIO
+from unittest.mock import patch
 
-from google.api_core.exceptions import AlreadyExists
+from fastapi import HTTPException
 
-from src.routers.leaderboard import (
-    create_map,
-    delete_lap_time,
-    list_maps,
-    read_map,
-    record_lap_time,
-)
-from src.schemas import LapTimeRequest, MapCreateRequest
-from src.services import LeaderboardService
+from src.main import app
+from src.routers.leaderboard import list_leaderboards
 from src.services.leaderboard import (
-    CARS_CACHE_KEY,
-    MAP_COLLECTION,
-    MAPS_CACHE_KEY,
-    InvalidNameError,
-    LapTimeNotFoundError,
-    MapAlreadyExistsError,
-    MapNotFoundError,
-    TrackNotFoundError,
-    identifier,
+    LeaderboardError,
+    LeaderboardService,
 )
 
 
-class FakeRedis:
-    def __init__(self) -> None:
-        self.values: dict[str, str] = {}
+class FakeResponse(BytesIO):
+    def __enter__(self):
+        return self
 
-    async def get(self, key: str) -> str | None:
-        return self.values.get(key)
-
-    async def set(self, key: str, value: str, ex: int | None = None) -> None:
-        self.values[key] = value
-
-    async def delete(self, *keys: str) -> None:
-        for key in keys:
-            self.values.pop(key, None)
+    def __exit__(self, *_args):
+        self.close()
 
 
-class FakeSnapshot:
-    def __init__(
-        self,
-        fields: dict | None,
-        document_id: str = "",
-        path: tuple[str, ...] = (),
-    ) -> None:
-        self._fields = fields
-        self.id = document_id
-        self.reference = SimpleNamespace(path="/".join(path))
+class LeaderboardTests(unittest.TestCase):
+    def test_leaderboard_and_gauntlet_use_distinct_api_names(self) -> None:
+        paths = app.openapi()["paths"]
 
-    @property
-    def exists(self) -> bool:
-        return self._fields is not None
+        self.assertIn("/v1/leaderboard", paths)
+        self.assertIn("/v1/gauntlet/maps", paths)
+        self.assertFalse(any(path.startswith("/v1/ranking") for path in paths))
+        self.assertNotIn("/v1/leaderboard/maps", paths)
 
-    def to_dict(self) -> dict | None:
-        return None if self._fields is None else dict(self._fields)
-
-
-class FakeQuery:
-    def __init__(
-        self,
-        documents: dict[tuple[str, ...], dict],
-        path: tuple[str, ...],
-        order_field: str | None = None,
-        maximum: int | None = None,
-    ) -> None:
-        self._documents = documents
-        self._path = path
-        self._order_field = order_field
-        self._maximum = maximum
-
-    def order_by(self, field: str) -> "FakeQuery":
-        return FakeQuery(self._documents, self._path, field, self._maximum)
-
-    def limit(self, maximum: int) -> "FakeQuery":
-        return FakeQuery(self._documents, self._path, self._order_field, maximum)
-
-    def stream(self):
-        matches = [
-            (path[-1], fields)
-            for path, fields in self._documents.items()
-            if len(path) == len(self._path) + 1 and path[:-1] == self._path
+    def test_fetch_normalizes_and_sorts_tiers(self) -> None:
+        payload = [
+            {
+                "id": 249,
+                "event_name": "啤酒节",
+                "bottom_rank": 192865,
+                "total_participants": None,
+                "tier_ranks": {"100%": 192865, "10%": 19286, "rank:1": 1},
+                "status": "active",
+                "updated_at": "2026-09-25T04:00:05+00:00",
+            }
         ]
-        if self._order_field is not None:
-            matches.sort(key=lambda match: match[1][self._order_field])
-        if self._maximum is not None:
-            matches = matches[: self._maximum]
-        return iter(
-            FakeSnapshot(fields, document_id, self._path + (document_id,))
-            for document_id, fields in matches
-        )
+        responses = [
+            FakeResponse(json.dumps(payload).encode()),
+            FakeResponse(
+                json.dumps(
+                    [{"id": "event-1", "name": "OKTOBER FAST TLE", "end_date": "2026-09-30", "type": "LIMITED_TIME_EVENT", "subtype": None}]
+                ).encode()
+            ),
+            FakeResponse(
+                json.dumps(
+                    [{"id": "season-1", "name": "SUNSET SPEEDWAY", "end_date": "2026-10-14"}]
+                ).encode()
+            ),
+            FakeResponse(
+                json.dumps(
+                    [
+                        {
+                            "id": "snapshot-1",
+                            "metric_type": "time",
+                            "tiers": [
+                                {
+                                    "percentage": 10,
+                                    "rank_target": None,
+                                    "rank": 19286,
+                                    "time_text": "1:04.626",
+                                    "score": None,
+                                    "participant_count": 19286,
+                                }
+                            ],
+                        }
+                    ]
+                ).encode()
+            ),
+        ]
+        payload[0]["associated_event_id"] = "event-1"
+        payload[0]["associated_season_id"] = "season-1"
+        payload[0]["official_snapshot_id"] = "snapshot-1"
+        responses[0] = FakeResponse(json.dumps(payload).encode())
 
+        with patch("src.services.leaderboard.urlopen", side_effect=responses):
+            result = LeaderboardService().fetch()
 
-class FakeCollection(FakeQuery):
-    def document(self, document_id: str) -> "FakeDocument":
-        return FakeDocument(self._documents, self._path + (document_id,))
-
-
-class FakeDocument:
-    def __init__(self, documents: dict[tuple[str, ...], dict], path: tuple[str, ...]) -> None:
-        self._documents = documents
-        self.path = path
-
-    def collection(self, name: str) -> FakeCollection:
-        return FakeCollection(self._documents, self.path + (name,))
-
-    def get(self) -> FakeSnapshot:
-        return FakeSnapshot(self._documents.get(self.path), self.path[-1], self.path)
-
-    def set(self, fields: dict) -> None:
-        self._documents[self.path] = dict(fields)
-
-    def delete(self) -> None:
-        self._documents.pop(self.path, None)
-
-
-class FakeBatch:
-    def __init__(self, documents: dict[tuple[str, ...], dict]) -> None:
-        self._documents = documents
-        self._writes: list[tuple[str, FakeDocument, dict]] = []
-
-    def create(self, document: FakeDocument, fields: dict) -> None:
-        self._writes.append(("create", document, fields))
-
-    def set(self, document: FakeDocument, fields: dict) -> None:
-        self._writes.append(("set", document, fields))
-
-    def commit(self) -> None:
-        for operation, document, _ in self._writes:
-            if operation == "create" and document.path in self._documents:
-                raise AlreadyExists("document already exists")
-        for _, document, fields in self._writes:
-            self._documents[document.path] = dict(fields)
-
-
-class FakeCollectionGroup:
-    """Every document filed under a collection of this name, at any depth."""
-
-    def __init__(self, documents: dict[tuple[str, ...], dict], name: str) -> None:
-        self._documents = documents
-        self._name = name
-
-    def stream(self):
-        return iter(
-            FakeSnapshot(fields, path[-1], path)
-            for path, fields in self._documents.items()
-            if len(path) >= 2 and path[-2] == self._name
-        )
-
-
-class FakeFirestore:
-    def __init__(self) -> None:
-        self.documents: dict[tuple[str, ...], dict] = {}
-
-    def collection(self, name: str) -> FakeCollection:
-        return FakeCollection(self.documents, (name,))
-
-    def collection_group(self, name: str) -> FakeCollectionGroup:
-        return FakeCollectionGroup(self.documents, name)
-
-    def batch(self) -> FakeBatch:
-        return FakeBatch(self.documents)
-
-
-class LeaderboardServiceTests(unittest.IsolatedAsyncioTestCase):
-    def setUp(self) -> None:
-        self.firestore = FakeFirestore()
-        self.service = LeaderboardService(self.firestore)
-
-    async def new_york(self):
-        return await self.service.create_map(
-            "New York",
-            ["A park In A run", "Harbor Sprint"],
-        )
-
-    async def test_creates_map_with_identifiers_derived_from_names(self) -> None:
-        game_map = await self.new_york()
-
-        self.assertEqual(game_map.id, "new-york")
-        self.assertEqual([track.id for track in game_map.tracks], ["a-park-in-a-run", "harbor-sprint"])
+        self.assertEqual(result[0]["name"], "啤酒节")
+        self.assertEqual(result[0]["total_participants"], 192865)
         self.assertEqual(
-            self.firestore.documents[(MAP_COLLECTION, "new-york")]["name"],
-            "New York",
+            [tier["label"] for tier in result[0]["tiers"]],
+            ["rank:1", "10%", "100%"],
         )
-        self.assertEqual(
-            self.firestore.documents[(MAP_COLLECTION, "new-york", "tracks", "harbor-sprint")],
-            {"id": "harbor-sprint", "name": "Harbor Sprint", "chinese_name": ""},
-        )
-
-    async def test_rejects_a_second_map_with_the_same_name(self) -> None:
-        await self.new_york()
-
-        with self.assertRaises(MapAlreadyExistsError):
-            await self.service.create_map("new york", ["Other One", "Other Two"])
-
-    async def test_rejects_names_without_letters_or_digits(self) -> None:
-        with self.assertRaises(InvalidNameError):
-            await self.service.create_map("!!!", ["One", "Two"])
-        with self.assertRaises(InvalidNameError):
-            await self.service.create_map("Berlin", ["One", "---"])
-
-    async def test_rejects_two_tracks_that_share_an_identifier(self) -> None:
-        with self.assertRaises(InvalidNameError):
-            await self.service.create_map("Berlin", ["Night Run", "night-run"])
-
-    async def test_lists_maps_in_release_order(self) -> None:
-        await self.service.create_map("Tokyo", ["One", "Two"])
-        await self.new_york()
-        await self.service.create_map("Rome", ["Three", "Four"])
-        # Rome ships first, New York later; Tokyo has no recorded order.
-        self.firestore.documents[(MAP_COLLECTION, "rome")]["release_order"] = 1
-        self.firestore.documents[(MAP_COLLECTION, "new-york")]["release_order"] = 9
-
-        names = [game_map.name for game_map in await self.service.list_maps()]
-
-        self.assertEqual(names, ["Rome", "New York", "Tokyo"])
-
-    async def test_reuses_cached_maps_cars_and_map_times(self) -> None:
-        redis = FakeRedis()
-        service = LeaderboardService(self.firestore, redis)
-        await service.create_map("New York", ["One", "Two"])
-        await service.record_lap_time("new-york", "one", "C2", 19.62)
-
-        first_maps = await service.list_maps()
-        first_cars = await service.list_cars()
-        first_times = await service.map_times("new-york")
-        self.firestore.documents[(MAP_COLLECTION, "new-york")]["name"] = "Changed"
-        self.firestore.documents[
-            (MAP_COLLECTION, "new-york", "tracks", "one", "times", "c2")
-        ]["seconds"] = 99.0
-
-        self.assertEqual((await service.list_maps())[0].name, first_maps[0].name)
-        self.assertEqual((await service.list_cars())[0].name, first_cars[0].name)
-        cached_times = await service.map_times("new-york")
-        self.assertEqual(cached_times.times["one"], first_times.times["one"])
-        self.assertIn(MAPS_CACHE_KEY, redis.values)
-        self.assertIn(CARS_CACHE_KEY, redis.values)
-        self.assertIn("leaderboard:map:new-york", redis.values)
-
-    async def test_lap_writes_invalidate_cached_leaderboard_and_cars(self) -> None:
-        redis = FakeRedis()
-        service = LeaderboardService(self.firestore, redis)
-        await service.create_map("New York", ["One", "Two"])
-        await service.list_cars()
-        await service.map_times("new-york")
-
-        await service.record_lap_time("new-york", "one", "C2", 19.62)
-
-        self.assertNotIn(CARS_CACHE_KEY, redis.values)
-        self.assertNotIn("leaderboard:map:new-york", redis.values)
-
-    async def test_lists_maps_without_a_release_order_last_by_name(self) -> None:
-        await self.service.create_map("Tokyo", ["One", "Two"])
-        await self.new_york()
-
-        names = [game_map.name for game_map in await self.service.list_maps()]
-
-        self.assertEqual(names, ["New York", "Tokyo"])
-
-    async def test_keeps_maps_that_predate_the_release_order_field(self) -> None:
-        await self.new_york()
-        await self.service.create_map("Rome", ["Three", "Four"])
-        self.firestore.documents[(MAP_COLLECTION, "rome")]["release_order"] = 1
-        # An order_by query in Firestore would drop this document entirely.
-        self.firestore.documents[(MAP_COLLECTION, "new-york")].pop("release_order", None)
-
-        names = [game_map.name for game_map in await self.service.list_maps()]
-
-        self.assertEqual(names, ["Rome", "New York"])
-
-    async def test_takes_track_details_from_the_track_document(self) -> None:
-        await self.new_york()
-        self.firestore.documents[
-            (MAP_COLLECTION, "new-york", "tracks", "a-park-in-a-run")
-        ]["chinese_name"] = "公园"
-
-        result = await self.service.map_times("new-york")
-
-        self.assertEqual(
-            [(track.name, track.chinese_name) for track in result.game_map.tracks],
-            [("A park In A run", "公园"), ("Harbor Sprint", "")],
-        )
-
-    async def test_falls_back_to_the_maps_track_array(self) -> None:
-        await self.new_york()
-        # Recorded on the map document instead of the track document.
-        tracks = self.firestore.documents[(MAP_COLLECTION, "new-york")]["tracks"]
-        tracks[1]["chinese_name"] = "海港冲刺"
-
-        result = await self.service.map_times("new-york")
-
-        self.assertEqual(result.game_map.tracks[1].chinese_name, "海港冲刺")
-
-    async def test_track_chinese_name_reaches_a_recorded_time(self) -> None:
-        await self.new_york()
-        self.firestore.documents[
-            (MAP_COLLECTION, "new-york", "tracks", "a-park-in-a-run")
-        ]["chinese_name"] = "公园"
-
-        result = await self.service.record_lap_time(
-            "new-york", "a-park-in-a-run", "C2", 19.62
-        )
-
-        self.assertEqual(result.track.chinese_name, "公园")
-
-    async def test_reports_a_maps_chinese_name(self) -> None:
-        await self.new_york()
-        self.firestore.documents[(MAP_COLLECTION, "new-york")]["chinese_name"] = "纽约"
-
-        result = await self.service.map_times("new-york")
-
-        self.assertEqual(result.game_map.chinese_name, "纽约")
-
-    async def test_records_a_time_and_returns_the_track_leaderboard(self) -> None:
-        await self.new_york()
-
-        result = await self.service.record_lap_time(
-            "new-york", "a-park-in-a-run", "C2", 19.62
-        )
-
-        self.assertEqual(result.track.name, "A park In A run")
-        self.assertEqual([(time.car, time.seconds) for time in result.times], [("C2", 19.62)])
-
-    async def test_recording_again_replaces_the_cars_previous_time(self) -> None:
-        await self.new_york()
-        await self.service.record_lap_time("new-york", "a-park-in-a-run", "C2", 19.62)
-
-        result = await self.service.record_lap_time(
-            "new-york", "a-park-in-a-run", "c2", 21.40
-        )
-
-        self.assertEqual([(time.car, time.seconds) for time in result.times], [("c2", 21.4)])
-
-    async def test_returns_every_recorded_car_fastest_first(self) -> None:
-        await self.new_york()
-        for position, seconds in enumerate([25.0, 19.62, 31.5, 22.25, 20.1, 28.0, 19.7]):
-            await self.service.record_lap_time(
-                "new-york", "a-park-in-a-run", f"C{position}", seconds
-            )
-
-        result = await self.service.record_lap_time(
-            "new-york", "a-park-in-a-run", "C9", 18.05
-        )
-
-        self.assertEqual(
-            [time.seconds for time in result.times],
-            [18.05, 19.62, 19.7, 20.1, 22.25, 25.0, 28.0, 31.5],
-        )
-
-    async def test_keeps_each_tracks_times_separate(self) -> None:
-        await self.new_york()
-        await self.service.record_lap_time("new-york", "a-park-in-a-run", "C2", 19.62)
-
-        result = await self.service.map_times("new-york")
-
-        self.assertEqual(len(result.times["a-park-in-a-run"]), 1)
-        self.assertEqual(result.times["harbor-sprint"], [])
-
-    async def test_deletes_a_cars_time(self) -> None:
-        await self.new_york()
-        await self.service.record_lap_time("new-york", "a-park-in-a-run", "C2", 19.62)
-        await self.service.record_lap_time("new-york", "a-park-in-a-run", "C3", 20.10)
-
-        result = await self.service.delete_lap_time("new-york", "a-park-in-a-run", "C2")
-
-        self.assertEqual([time.car for time in result.times], ["C3"])
-
-    async def test_deleting_an_unrecorded_car_reports_not_found(self) -> None:
-        await self.new_york()
-
-        with self.assertRaises(LapTimeNotFoundError):
-            await self.service.delete_lap_time("new-york", "a-park-in-a-run", "C2")
-
-    async def test_reports_unknown_maps_and_tracks(self) -> None:
-        await self.new_york()
-
-        with self.assertRaises(MapNotFoundError):
-            await self.service.map_times("berlin")
-        with self.assertRaises(TrackNotFoundError):
-            await self.service.record_lap_time("new-york", "harbor-sprin", "C2", 19.62)
-
-
-
-
-    async def test_lists_every_track_in_map_release_order(self) -> None:
-        await self.new_york()
-        await self.service.create_map("Rome", ["Roman Tumble", "Roman Byroads"])
-        self.firestore.documents[(MAP_COLLECTION, "rome")]["release_order"] = 1
-        self.firestore.documents[(MAP_COLLECTION, "new-york")]["release_order"] = 2
-
-        tracks = await self.service.list_tracks()
-
-        self.assertEqual(
-            [(t.game_map.name, t.track.name) for t in tracks],
-            [
-                ("Rome", "Roman Tumble"),
-                ("Rome", "Roman Byroads"),
-                ("New York", "A park In A run"),
-                ("New York", "Harbor Sprint"),
-            ],
-        )
-
-    async def test_listed_tracks_carry_the_document_chinese_name(self) -> None:
-        await self.new_york()
-        self.firestore.documents[
-            (MAP_COLLECTION, "new-york", "tracks", "harbor-sprint")
-        ]["chinese_name"] = "海港冲刺"
-
-        tracks = await self.service.list_tracks()
-
-        chinese = {t.track.id: t.track.chinese_name for t in tracks}
-        self.assertEqual(chinese["harbor-sprint"], "海港冲刺")
-        self.assertEqual(chinese["a-park-in-a-run"], "")
-
-    async def test_lookup_accepts_track_identifiers(self) -> None:
-        # A selector already knows the identifier, so it sends that.
-        await self.new_york()
-        await self.service.record_lap_time("new-york", "harbor-sprint", "c2", 20.0)
-
-        result = await self.service.lookup_tracks(["harbor-sprint"])
-
-        self.assertEqual([t.track.name for t in result.tracks], ["Harbor Sprint"])
-        self.assertEqual([t.times[0].car for t in result.tracks], ["c2"])
-
-    async def test_looks_up_tracks_across_maps_in_the_order_asked(self) -> None:
-        await self.new_york()
-        await self.service.create_map("Rome", ["Roman Tumble", "It's a Twister!"])
-        await self.service.record_lap_time("rome", "roman-tumble", "c2", 18.033)
-        await self.service.record_lap_time("new-york", "harbor-sprint", "狼", 19.5)
-
-        result = await self.service.lookup_tracks(
-            ["HARBOR SPRINT", "ROMAN TUMBLE"]
-        )
-
-        self.assertEqual(result.unmatched, [])
-        self.assertEqual(
-            [(t.game_map.name, t.track.name) for t in result.tracks],
-            [("New York", "Harbor Sprint"), ("Rome", "Roman Tumble")],
-        )
-        self.assertEqual([t.times[0].car for t in result.tracks], ["狼", "c2"])
-        # The requested spelling is carried back so the caller can label it.
-        self.assertEqual(result.tracks[0].requested_name, "HARBOR SPRINT")
-
-    async def test_lookup_tolerates_punctuation_recognition_gets_wrong(self) -> None:
-        await self.service.create_map("Rome", ["Roman Tumble", "It's a Twister!"])
-
-        result = await self.service.lookup_tracks(["ITS A TWISTER"])
-
-        self.assertEqual([t.track.name for t in result.tracks], ["It's a Twister!"])
-
-    async def test_lookup_reports_names_it_could_not_match(self) -> None:
-        await self.new_york()
-
-        result = await self.service.lookup_tracks(["Harbor Sprint", "NOT A TRACK"])
-
-        self.assertEqual([t.track.name for t in result.tracks], ["Harbor Sprint"])
-        self.assertEqual(result.unmatched, ["NOT A TRACK"])
-
-    async def test_lookup_matches_a_chinese_track_name(self) -> None:
-        await self.new_york()
-        self.firestore.documents[
-            (MAP_COLLECTION, "new-york", "tracks", "harbor-sprint")
-        ]["chinese_name"] = "海港冲刺"
-
-        result = await self.service.lookup_tracks(["海港冲刺"])
-
-        self.assertEqual([t.track.name for t in result.tracks], ["Harbor Sprint"])
-
-    async def test_lists_every_car_once_under_its_most_used_spelling(self) -> None:
-        await self.new_york()
-        await self.service.create_map("Rome", ["Roman Tumble", "Roman Byroads"])
-        # "c2" is written three ways; the most frequent spelling wins.
-        await self.service.record_lap_time("new-york", "a-park-in-a-run", "c2", 19.6)
-        await self.service.record_lap_time("new-york", "harbor-sprint", "c2", 20.1)
-        await self.service.record_lap_time("rome", "roman-tumble", "C2", 18.0)
-        await self.service.record_lap_time("rome", "roman-byroads", "杰弟", 19.5)
-        await self.service.record_lap_time("new-york", "a-park-in-a-run", "杰弟", 21.0)
-
-        cars = await self.service.list_cars()
-
-        self.assertEqual([(car.id, car.name) for car in cars], [("c2", "c2"), ("杰弟", "杰弟")])
-
-    async def test_car_spelling_ties_break_alphabetically(self) -> None:
-        await self.new_york()
-        await self.service.record_lap_time("new-york", "a-park-in-a-run", "SF90", 19.6)
-        await self.service.record_lap_time("new-york", "harbor-sprint", "sf90", 20.1)
-
-        cars = await self.service.list_cars()
-
-        self.assertEqual([car.name for car in cars], ["SF90"])
-
-    async def test_lists_no_cars_before_any_time_is_recorded(self) -> None:
-        await self.new_york()
-
-        self.assertEqual(await self.service.list_cars(), [])
-
-    def test_identifier_collapses_punctuation_and_case(self) -> None:
-        self.assertEqual(identifier("A park In A run"), "a-park-in-a-run")
-        self.assertEqual(identifier("  São  Paulo!  "), "são-paulo")
-        self.assertEqual(identifier("---"), "")
-
-    def test_identifier_keeps_characters_of_every_script(self) -> None:
-        self.assertEqual(identifier("旧金山"), "旧金山")
-        self.assertEqual(identifier("杰弟"), "杰弟")
-        self.assertEqual(identifier("桥+河+星"), "桥-河-星")
-
-    def test_identifier_rejects_names_firestore_reserves(self) -> None:
-        for reserved in ["..", ".", "__name__"]:
-            self.assertEqual(identifier(reserved), "")
-
-    async def test_stores_chinese_maps_tracks_and_cars(self) -> None:
-        game_map = await self.service.create_map("旧金山", ["Railroad", "Tunnel"])
-        self.assertEqual(game_map.id, "旧金山")
-
-        result = await self.service.record_lap_time("旧金山", "tunnel", "杰弟", 19.920)
-        await self.service.record_lap_time("旧金山", "tunnel", "绿", 19.733)
-
-        result = await self.service.map_times("旧金山")
-        self.assertEqual(
-            [(time.car, time.seconds) for time in result.times["tunnel"]],
-            [("绿", 19.733), ("杰弟", 19.92)],
-        )
-
-
-class LeaderboardRouterTests(unittest.IsolatedAsyncioTestCase):
-    def setUp(self) -> None:
-        self.service = LeaderboardService(FakeFirestore())
-
-    async def test_creates_a_map_with_empty_track_leaderboards(self) -> None:
-        response = await create_map(
-            MapCreateRequest(name="New York", tracks=["A park In A run", "Harbor Sprint"]),
-            self.service,
-        )
-
-        self.assertEqual(response.id, "new-york")
-        self.assertEqual([track.name for track in response.tracks], ["A park In A run", "Harbor Sprint"])
-        self.assertEqual([track.times for track in response.tracks], [[], []])
-
-    async def test_ranks_times_from_one_in_order(self) -> None:
-        await create_map(
-            MapCreateRequest(name="New York", tracks=["A park In A run", "Harbor Sprint"]),
-            self.service,
-        )
-        await record_lap_time(
-            "new-york", "a-park-in-a-run", LapTimeRequest(car="C3", seconds=20.1), self.service
-        )
-        response = await record_lap_time(
-            "new-york", "a-park-in-a-run", LapTimeRequest(car="C2", seconds=19.62), self.service
-        )
-
-        self.assertEqual([(time.rank, time.car) for time in response.times], [(1, "C2"), (2, "C3")])
-
-    async def test_lists_maps_for_the_selector(self) -> None:
-        await create_map(MapCreateRequest(name="Tokyo", tracks=["One", "Two"]), self.service)
-
-        response = await list_maps(self.service)
-
-        self.assertEqual(
-            response.maps[0].model_dump(),
-            {"id": "tokyo", "name": "Tokyo", "chinese_name": ""},
-        )
-
-    async def test_translates_service_errors_into_status_codes(self) -> None:
-        from fastapi import HTTPException
-
-        await create_map(MapCreateRequest(name="Tokyo", tracks=["One", "Two"]), self.service)
-
-        with self.assertRaises(HTTPException) as duplicate:
-            await create_map(MapCreateRequest(name="Tokyo", tracks=["Three", "Four"]), self.service)
-        self.assertEqual(duplicate.exception.status_code, 409)
-
-        with self.assertRaises(HTTPException) as missing:
-            await read_map("berlin", self.service)
-        self.assertEqual(missing.exception.status_code, 404)
-
-        with self.assertRaises(HTTPException) as unrecorded:
-            await delete_lap_time("tokyo", "one", "C2", self.service)
-        self.assertEqual(unrecorded.exception.status_code, 404)
-
+        self.assertEqual(result[0]["event"]["name"], "OKTOBER FAST TLE")
+        self.assertEqual(result[0]["event"]["type"], "LIMITED_TIME_EVENT")
+        self.assertEqual(result[0]["season"]["name"], "SUNSET SPEEDWAY")
+        self.assertEqual(result[0]["tiers"][1]["time"], "1:04.626")
+        self.assertIsNone(result[0]["tiers"][1]["score"])
+
+    def test_fetch_includes_scores_from_score_snapshot(self) -> None:
+        responses = [
+            FakeResponse(
+                json.dumps(
+                    [
+                        {
+                            "id": 256,
+                            "event_name": "IMS∧聚光灯",
+                            "bottom_rank": 39198,
+                            "total_participants": 39198,
+                            "tier_ranks": {"1%": 391, "100%": 39198},
+                            "status": "active",
+                            "updated_at": "2026-09-26T03:00:00+00:00",
+                            "associated_event_id": "spotlight-1",
+                            "associated_season_id": None,
+                            "official_snapshot_id": "snapshot-score",
+                        }
+                    ]
+                ).encode()
+            ),
+            FakeResponse(
+                json.dumps(
+                    [
+                        {
+                            "id": "spotlight-1",
+                            "name": "IMS Spotlight",
+                            "end_date": "2026-10-14",
+                            "type": "LIMITED_TIME_EVENT",
+                            "subtype": "spotlight",
+                        }
+                    ]
+                ).encode()
+            ),
+            FakeResponse(b"[]"),
+            FakeResponse(
+                json.dumps(
+                    [
+                        {
+                            "id": "snapshot-score",
+                            "metric_type": "score",
+                            "tiers": [
+                                {
+                                    "percentage": 1,
+                                    "rank_target": None,
+                                    "rank": 391,
+                                    "time_text": None,
+                                    "score": 14519,
+                                    "participant_count": 39198,
+                                },
+                                {
+                                    "percentage": 100,
+                                    "rank_target": None,
+                                    "rank": 39198,
+                                    "time_text": None,
+                                    "score": 880,
+                                    "participant_count": 39198,
+                                },
+                            ],
+                        }
+                    ]
+                ).encode()
+            ),
+        ]
+
+        with patch("src.services.leaderboard.urlopen", side_effect=responses):
+            result = LeaderboardService().fetch()
+
+        self.assertEqual(result[0]["tiers"][0]["rank"], 391)
+        self.assertEqual(result[0]["tiers"][0]["score"], 14519.0)
+        self.assertIsNone(result[0]["tiers"][0]["time"])
+        self.assertEqual(result[0]["tiers"][1]["score"], 880.0)
+
+    def test_router_maps_upstream_failure_to_bad_gateway(self) -> None:
+        class FailingService:
+            def fetch(self):
+                raise LeaderboardError("temporarily unavailable")
+
+        with self.assertRaises(HTTPException) as raised:
+            list_leaderboards(FailingService())
+
+        self.assertEqual(raised.exception.status_code, 502)
+
+    def test_fetch_excludes_grand_prix_leaderboards(self) -> None:
+        responses = [
+            FakeResponse(
+                json.dumps(
+                    [
+                        {
+                            "id": 300,
+                            "event_name": "KIMERA EVO37 GRAND PRIX",
+                            "bottom_rank": 1000,
+                            "total_participants": 1000,
+                            "tier_ranks": {"1%": 10, "100%": 1000},
+                            "status": "active",
+                            "updated_at": "2026-09-26T12:00:00+00:00",
+                            "associated_event_id": "gp-1",
+                            "associated_season_id": None,
+                            "official_snapshot_id": None,
+                        }
+                    ]
+                ).encode()
+            ),
+            FakeResponse(
+                json.dumps(
+                    [
+                        {
+                            "id": "gp-1",
+                            "name": "KIMERA EVO37 GRAND PRIX",
+                            "end_date": "2026-10-09",
+                            "type": "GRAND_PRIX",
+                            "subtype": None,
+                        }
+                    ]
+                ).encode()
+            ),
+            FakeResponse(b"[]"),
+            FakeResponse(b"[]"),
+        ]
+
+        with patch("src.services.leaderboard.urlopen", side_effect=responses):
+            result = LeaderboardService().fetch()
+
+        self.assertEqual(result, [])
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,7 +2,7 @@
 
 from src.schemas.health import HealthResponse
 from src.schemas.hello import WorkflowResponse
-from src.schemas.leaderboard import (
+from src.schemas.gauntlet import (
     CarListResponse,
     CarPath,
     CarSummaryResponse,
@@ -10,20 +10,20 @@ from src.schemas.leaderboard import (
     LapTimeEntry,
     LapTimeRequest,
     MapCreateRequest,
-    MapLeaderboardResponse,
+    MapGauntletResponse,
     MapListResponse,
     MapSummaryResponse,
-    MapTrackLeaderboardResponse,
+    MapTrackGauntletResponse,
     MapTrackResponse,
-    TrackLeaderboardResponse,
+    TrackGauntletResponse,
     TrackListResponse,
     TrackLookupRequest,
     TrackLookupResponse,
-    map_leaderboard,
+    map_gauntlet,
     map_track,
-    map_track_leaderboard,
+    map_track_gauntlet,
     ranked,
-    track_leaderboard,
+    track_gauntlet,
 )
 from src.schemas.messages import (
     MessageResponse,
@@ -31,12 +31,11 @@ from src.schemas.messages import (
     SchedulingMessageResponse,
 )
 from src.schemas.order import OrderRequest, OrderResponse
-from src.schemas.ranking import (
-    GalaxyLeaderboard,
-    GalaxyLeaderboardContext,
-    GalaxyLeaderboardListResponse,
-    GalaxyLeaderboardTier,
-    RankingRequest,
+from src.schemas.leaderboard import (
+    Leaderboard,
+    LeaderboardContext,
+    LeaderboardListResponse,
+    LeaderboardTier,
 )
 from src.schemas.text_recognition import TextLineResponse, TextRecognitionResponse
 from src.schemas.url_shortening import ShortenRequest, ShortenResponse, ShortKey
@@ -46,15 +45,15 @@ __all__ = [
     "CarPath",
     "CarSummaryResponse",
     "HealthResponse",
-    "GalaxyLeaderboard",
-    "GalaxyLeaderboardContext",
-    "GalaxyLeaderboardListResponse",
-    "GalaxyLeaderboardTier",
+    "Leaderboard",
+    "LeaderboardContext",
+    "LeaderboardListResponse",
+    "LeaderboardTier",
     "Identifier",
     "LapTimeEntry",
     "LapTimeRequest",
     "MapCreateRequest",
-    "MapLeaderboardResponse",
+    "MapGauntletResponse",
     "MapListResponse",
     "MapSummaryResponse",
     "MessageResponse",
@@ -62,22 +61,21 @@ __all__ = [
     "SchedulingMessageResponse",
     "OrderRequest",
     "OrderResponse",
-    "RankingRequest",
     "ShortenRequest",
     "ShortenResponse",
     "ShortKey",
     "TextLineResponse",
     "TextRecognitionResponse",
-    "MapTrackLeaderboardResponse",
+    "MapTrackGauntletResponse",
     "MapTrackResponse",
-    "TrackLeaderboardResponse",
+    "TrackGauntletResponse",
     "TrackListResponse",
     "TrackLookupRequest",
     "TrackLookupResponse",
     "WorkflowResponse",
-    "map_leaderboard",
+    "map_gauntlet",
     "map_track",
-    "map_track_leaderboard",
+    "map_track_gauntlet",
     "ranked",
-    "track_leaderboard",
+    "track_gauntlet",
 ]

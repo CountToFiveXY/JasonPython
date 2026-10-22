@@ -1,4 +1,4 @@
-"""Change data capture for the leaderboard cache.
+"""Change data capture for the Gauntlet cache.
 
 The listener is on Firestore itself rather than on this API's write path, so a
 document edited in the Firebase console — or by any other client — invalidates
@@ -14,7 +14,7 @@ from google.cloud.firestore_v1 import Client as FirestoreClient
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
-from src.services.leaderboard import (
+from src.services.gauntlet import (
     LAP_TIME_COLLECTION,
     MAP_COLLECTION,
     TRACK_COLLECTION,
@@ -22,8 +22,8 @@ from src.services.leaderboard import (
 )
 
 
-class LeaderboardCacheWatcher:
-    """Clears cached leaderboard reads whenever their documents change."""
+class GauntletCacheWatcher:
+    """Clears cached Gauntlet reads whenever their documents change."""
 
     def __init__(
         self,

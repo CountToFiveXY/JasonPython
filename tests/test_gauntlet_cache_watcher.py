@@ -1,14 +1,14 @@
 import asyncio
 import unittest
 
-from src.infrastructure.cache_watcher import LeaderboardCacheWatcher
-from src.services.leaderboard import (
+from src.infrastructure.gauntlet_cache_watcher import GauntletCacheWatcher
+from src.services.gauntlet import (
     CARS_CACHE_KEY,
     MAPS_CACHE_KEY,
     cache_keys_for_path,
     map_cache_key,
 )
-from tests.test_leaderboard import FakeFirestore, FakeRedis
+from tests.test_gauntlet import FakeFirestore, FakeRedis
 
 
 class FakeReference:
@@ -48,8 +48,8 @@ class CacheKeyTests(unittest.TestCase):
 
 
 class CacheWatcherTests(unittest.IsolatedAsyncioTestCase):
-    async def watcher(self, redis: FakeRedis) -> LeaderboardCacheWatcher:
-        return LeaderboardCacheWatcher(
+    async def watcher(self, redis: FakeRedis) -> GauntletCacheWatcher:
+        return GauntletCacheWatcher(
             FakeFirestore(), redis, asyncio.get_running_loop()
         )
 
