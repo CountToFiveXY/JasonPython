@@ -22,6 +22,9 @@ input, button { font: inherit; }
 progress { width: 100%; }
 .error { color: #d33; }
 nav { color: #888; overflow-wrap: anywhere; }
+#files { display: block; max-width: 100%; }
+.actions { display: flex; justify-content: flex-end; margin-top: 12px; }
+#status:empty { display: none; }
 </style>
 </head>
 <body>
@@ -46,7 +49,7 @@ $message
 _UPLOAD_FORM = Template("""<section>
 <form id="upload" data-folder="$folder">
 <input type="file" id="files" multiple required>
-<button>Upload</button>
+<div class="actions"><button>Upload</button></div>
 </form>
 <progress id="progress" value="0" max="1" hidden></progress>
 <p id="status"></p>
