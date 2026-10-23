@@ -6,6 +6,7 @@ from fastapi.concurrency import run_in_threadpool
 from src.dependencies import get_file_transfer_service
 from src.schemas import FileTransferStatus
 from src.services import FileTransferService
+from src.services.file_transfer import HostNameInUseError
 
 
 LOCAL_CLIENTS = {"127.0.0.1", "::1"}
@@ -41,6 +42,8 @@ async def start_file_transfer(
 ) -> FileTransferStatus:
     try:
         status = await run_in_threadpool(service.start)
+    except HostNameInUseError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except OSError as exc:
         raise HTTPException(
             status_code=500,
