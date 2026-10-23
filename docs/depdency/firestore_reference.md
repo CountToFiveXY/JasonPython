@@ -7,9 +7,10 @@ and lap times in the `maps` collection of the same project.
 
 ## Local authentication
 
-Generate a service-account key from Firebase Console under **Project settings →
-Service accounts**, store the JSON file outside this repository, and expose its
-path before starting the API:
+Each laptop uses its own service account and key; create them with
+[How to run the server, step 3](../how_to_run_server.md#3-create-this-laptops-google-cloud-service-account).
+The key lives at `~/.config/jasonapp/service-account.json`, which
+`scripts/run_local.sh` uses automatically. To use a key elsewhere:
 
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS="/absolute/path/to/service-account.json"

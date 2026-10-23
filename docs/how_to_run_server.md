@@ -4,13 +4,9 @@ Follow this guide from the project root when setting up the application for the
 first time. The local environment includes Redis, Kafka, a Kafka message worker,
 Temporal Server, a Temporal worker, and FastAPI.
 
-The order API also requires credentials for the `jasonapp-xm0830` Firebase
-project. Before starting locally, set `GOOGLE_APPLICATION_CREDENTIALS` to the
-absolute path of a service-account JSON file stored outside this repository:
-
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS="/absolute/path/to/service-account.json"
-```
+The backend reads Firestore and calls Cloud Vision in the `jasonapp-xm0830`
+Google Cloud project, so **each laptop needs its own service account**. See
+[step 3](#3-create-this-laptops-google-cloud-service-account).
 
 ## First-time setup
 
@@ -35,6 +31,67 @@ brew --version
 ```
 
 If Homebrew is not installed, get it from <https://brew.sh>.
+
+### 3. Create this laptop's Google Cloud service account
+
+Every laptop that runs the backend gets its **own** service account in the
+`jasonapp-xm0830` project, with its own key. A lost or retired laptop can
+then be cut off on its own, and Google Cloud's audit logs show which laptop
+made each change.
+
+Each account gets only the two roles the backend uses:
+
+| Role | Used for |
+|---|---|
+| `roles/datastore.user` | Firestore: Gauntlet maps and lap times, orders, the File Transfer code |
+| `roles/serviceusage.serviceUsageConsumer` | Calling Cloud Vision for text recognition |
+
+Run these on the laptop being set up, signed in to `gcloud` with an account
+that can manage the project's service accounts and IAM (a project Owner).
+Pick a name for the laptop of up to 21 lowercase letters, digits, and
+hyphens; with the `jasonapp-` prefix it must fit Google's 30-character limit.
+
+```bash
+LAPTOP=yuqiao-mbp  # This laptop's name; the account becomes jasonapp-yuqiao-mbp.
+PROJECT=jasonapp-xm0830
+SA="jasonapp-$LAPTOP@$PROJECT.iam.gserviceaccount.com"
+
+gcloud iam service-accounts create "jasonapp-$LAPTOP" \
+  --project "$PROJECT" --display-name "JasonApp backend on $LAPTOP"
+
+for role in roles/datastore.user roles/serviceusage.serviceUsageConsumer; do
+  gcloud projects add-iam-policy-binding "$PROJECT" \
+    --member "serviceAccount:$SA" --role "$role" --condition=None
+done
+
+mkdir -p ~/.config/jasonapp
+# Replaces any key already there, such as the old shared one.
+gcloud iam service-accounts keys create ~/.config/jasonapp/service-account.json \
+  --iam-account "$SA"
+chmod 600 ~/.config/jasonapp/service-account.json  # Only you can read the key.
+```
+
+`scripts/run_local.sh` uses `~/.config/jasonapp/service-account.json`
+automatically, so nothing needs exporting. To use a key stored elsewhere, set
+`GOOGLE_APPLICATION_CREDENTIALS` to its absolute path before starting.
+
+The key file grants access to the project's data. Keep it in
+`~/.config/jasonapp`, never in a repository, and never copy it to another
+laptop; give that laptop its own account instead.
+
+To check it, start the backend and open JasonApp: the **Google Cloud /
+Firestore** row on the Server pane turns green.
+
+When a laptop is lost or retired, delete its account. Its key stops working
+at once and no other laptop is affected:
+
+```bash
+gcloud iam service-accounts delete "jasonapp-$LAPTOP@jasonapp-xm0830.iam.gserviceaccount.com" \
+  --project jasonapp-xm0830
+```
+
+The old shared account, `jasonapp-local-backend`, can be deleted the same way
+once every laptop has its own.
 
 ## Start only the core services
 
@@ -180,8 +237,11 @@ address, and task-queue configuration.
   configured broker address is incorrect.
 - A workflow request waits indefinitely: the Temporal worker is not running or
   its namespace or task queue does not match FastAPI.
-- `DefaultCredentialsError`: set `GOOGLE_APPLICATION_CREDENTIALS` to a valid
-  service-account JSON file for the Firebase project.
+- `DefaultCredentialsError`: this laptop has no service-account key. Follow
+  [step 3](#3-create-this-laptops-google-cloud-service-account), or set
+  `GOOGLE_APPLICATION_CREDENTIALS` to the absolute path of this laptop's key.
+- `403 Permission denied` from Firestore or Cloud Vision: the laptop's account
+  is missing one of the two roles in step 3.
 
 ## Access from another device
 
