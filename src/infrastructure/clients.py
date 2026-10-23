@@ -20,7 +20,7 @@ from src.infrastructure.scheduler import (
     consume_scheduler_controls,
     run_local_scheduler,
 )
-from src.services.file_transfer import FileTransferService
+from src.services.file_transfer import FileTransferService, UploadCodeError, read_upload_code
 from src.messaging.config import (
     KAFKA_BOOTSTRAP_SERVERS,
     KAFKA_SCHEDULER_CONSUMER_GROUP,
@@ -60,7 +60,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.kafka_producer = kafka_producer
     app.state.cache_watcher = _start_cache_watcher(app, redis_client)
     app.state.scheduler_controller = scheduler_controller
-    app.state.file_transfer = FileTransferService()
+    app.state.file_transfer = FileTransferService(
+        load_upload_code=lambda: _read_upload_code(app),
+    )
     app.state.local_scheduler = asyncio.create_task(
         run_local_scheduler(
             is_enabled=scheduler_controller.is_enabled,
@@ -127,6 +129,20 @@ def _start_cache_watcher(
     app.state.firestore = watcher._firestore
     print("Watching Firestore for Gauntlet changes.", flush=True)
     return watcher
+
+
+def _read_upload_code(app: FastAPI) -> str:
+    """Read the upload code with the shared Firestore client, made on first use."""
+
+    try:
+        if not hasattr(app.state, "firestore"):
+            app.state.firestore = _create_firestore_client()
+    except DefaultCredentialsError as exc:
+        raise UploadCodeError(
+            "Firestore credentials are not configured, so the upload code "
+            "cannot be read. Set GOOGLE_APPLICATION_CREDENTIALS."
+        ) from exc
+    return read_upload_code(app.state.firestore)
 
 
 def get_redis(request: Request) -> Redis:

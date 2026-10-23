@@ -8,6 +8,7 @@ from pathlib import Path
 from src.infrastructure.bonjour import HostNameInUseError
 from src.services import FileTransferService
 from src.services.file_transfer.files import list_shared_files
+from src.services.file_transfer.uploads import UploadCodeError
 
 
 class FakeAnnouncer:
@@ -99,7 +100,11 @@ class UploadServerTests(unittest.TestCase):
         self._temp = tempfile.TemporaryDirectory()
         self.folder = Path(self._temp.name) / "FileTransfer"
         self.service = FileTransferService(
-            self.folder, port=0, host="127.0.0.1", announcer=FakeAnnouncer()
+            self.folder,
+            port=0,
+            host="127.0.0.1",
+            announcer=FakeAnnouncer(),
+            load_upload_code=lambda: "0427",
         )
 
     def tearDown(self) -> None:
@@ -142,7 +147,8 @@ class UploadServerTests(unittest.TestCase):
         _, page = self.request("GET", "/")
         self.assertIn(b"Unlock uploads", page)
 
-        response = self.unlock("000000" if status["upload_code"] != "000000" else "111111")
+        self.assertEqual(status["upload_code"], "0427")
+        response = self.unlock("1111")
         self.assertEqual(response.headers["Location"], "/?wrong")
         self.assertIsNone(response.headers["Set-Cookie"])
         _, page = self.request("GET", "/?wrong")
@@ -164,7 +170,12 @@ class UploadServerTests(unittest.TestCase):
 
     def test_rejects_files_over_the_size_limit(self) -> None:
         self.service = FileTransferService(
-            self.folder, port=0, host="127.0.0.1", announcer=FakeAnnouncer(), max_upload_bytes=4
+            self.folder,
+            port=0,
+            host="127.0.0.1",
+            announcer=FakeAnnouncer(),
+            max_upload_bytes=4,
+            load_upload_code=lambda: "0427",
         )
         status = self.service.start(allow_uploads=True)
         cookie = self.unlock(status["upload_code"]).headers["Set-Cookie"].split(";")[0]
@@ -180,6 +191,21 @@ class UploadServerTests(unittest.TestCase):
         self.assertIsNone(status["upload_code"])
         response, _ = self.request("POST", "/upload?name=a.txt", b"hi", cookie=cookie)
         self.assertEqual(response.status, 403)
+
+    def test_without_an_upload_code_sharing_stays_download_only(self) -> None:
+        self.service.stop()
+        self.service = FileTransferService(
+            self.folder, port=0, host="127.0.0.1", announcer=FakeAnnouncer()
+        )
+        with self.assertRaises(UploadCodeError):
+            self.service.start(allow_uploads=True)
+        self.assertFalse(self.service.status()["running"])
+        status = self.service.start()
+        with self.assertRaises(UploadCodeError):
+            self.service.start(allow_uploads=True)
+        status = self.service.status()
+        self.assertTrue(status["running"])
+        self.assertFalse(status["allow_uploads"])
 
     def test_stopping_clears_the_upload_code(self) -> None:
         self.service.start(allow_uploads=True)
