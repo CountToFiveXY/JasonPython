@@ -24,4 +24,6 @@ class FileTransferStatus(BaseModel):
     require_code: bool
     # Only this computer can read the status, so the code never leaves it.
     access_code: str | None
+    # Top-level folders; their contents are browsed on the shared page.
+    folders: list[str]
     files: list[SharedFile]

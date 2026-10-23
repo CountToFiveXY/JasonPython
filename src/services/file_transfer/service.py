@@ -11,7 +11,7 @@ from src.services.file_transfer.config import (
     FILE_TRANSFER_PORT,
     MAX_UPLOAD_BYTES,
 )
-from src.services.file_transfer.files import list_shared_files
+from src.services.file_transfer.files import list_folder
 from src.services.file_transfer.http_server import TransferHandler, TransferServer
 from src.services.file_transfer.access import AccessControl, UploadCodeError
 
@@ -89,6 +89,7 @@ class FileTransferService:
         address = lan_address() if server is not None else None
         ip_url = _url(address, port) if address and port else None
         host_name = self._announcer.host_name if port and self._announcer.is_active else None
+        folders, files = list_folder(self.folder)
         return {
             "running": server is not None,
             "folder": str(self.folder),
@@ -99,7 +100,8 @@ class FileTransferService:
             "allow_uploads": self._access.uploads_enabled,
             "require_code": self._access.code_required,
             "access_code": self._access.code or None,
-            "files": list_shared_files(self.folder),
+            "folders": folders,
+            "files": files,
         }
 
 

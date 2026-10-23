@@ -51,6 +51,7 @@ All three endpoints return the current status:
   "allow_uploads": true,
   "require_code": true,
   "access_code": "0427",
+  "folders": ["Photos"],
   "files": [{"name": "report.pdf", "size": 48213}]
 }
 ```
@@ -63,8 +64,21 @@ a free port (added to the URLs) when that one is busy.
 
 ## What the transfer server shares
 
-Only visible, regular files directly inside the folder. Subfolders, hidden
-files such as `.DS_Store`, and symlinks are not listed or served.
+Visible files and folders inside the shared folder, at any depth. Devices
+browse into a folder at its address ending in `/`, such as
+`http://jason.local/Photos/Trip/`, with a back link and a path at the top;
+a file's address is its path, such as `/Photos/Trip/beach.jpg`.
+
+Hidden files and folders (such as `.DS_Store`) and symlinks are never listed
+or served. Every part of a requested path must be an ordinary visible name,
+so `..`, backslashes, and empty parts are refused, and the final path must
+still lie inside the shared folder.
+
+Folders are created only on the host Mac. Devices upload files into the
+folder they are viewing (`POST /upload?folder=Photos/Trip&name=…`); a folder
+that does not exist returns `404`, and folders themselves cannot be uploaded.
+
+The status lists the top-level `folders` beside `files`.
 
 ## Access
 
@@ -75,8 +89,10 @@ files such as `.DS_Store`, and symlinks are not listed or served.
 | on | off | see the file list; download after entering the code |
 | on | on | see the file list; download and upload after entering the code |
 
-With the code required, the page lists file names and sizes without links
-and asks for the code; downloading a file without it returns `401`.
+With the code required, devices can still browse folders, but files are
+listed without links and the page asks for the code; downloading a file
+without it returns `401`. After the code, the page returns to the folder it
+was entered in.
 
 The code is fixed and kept in Firestore, so every Mac uses the same one:
 

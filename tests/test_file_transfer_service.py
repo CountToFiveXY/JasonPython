@@ -211,6 +211,66 @@ class AccessServerTests(unittest.TestCase):
         response, _ = self.request("GET", "/notes.txt")
         self.assertEqual(response.status, 200)
 
+    def make_folders(self):
+        (self.folder / "Photos" / "Trip").mkdir(parents=True)
+        (self.folder / "Photos" / "Trip" / "beach.jpg").write_bytes(b"jpg")
+
+    def test_devices_browse_into_folders_and_download_from_them(self) -> None:
+        status = self.service.start()
+        self.make_folders()
+        self.assertEqual(self.service.status()["folders"], ["Photos"])
+        _, page = self.request("GET", "/")
+        self.assertIn(b'href="/Photos/"', page)
+        _, page = self.request("GET", "/Photos/Trip/")
+        self.assertIn(b"<h1>Trip</h1>", page)
+        self.assertIn(b'href="/Photos/"', page)
+        self.assertIn(b'href="/Photos/Trip/beach.jpg"', page)
+        response, data = self.request("GET", "/Photos/Trip/beach.jpg")
+        self.assertEqual((response.status, data), (200, b"jpg"))
+
+        response, _ = self.request("GET", "/Photos/Trip")
+        self.assertEqual((response.status, response.headers["Location"]), (301, "/Photos/Trip/"))
+        for path in ["/Missing/", "/Photos/Trip/beach.jpg/", "/../", "/Photos/../../"]:
+            response, _ = self.request("GET", path)
+            self.assertEqual(response.status, 404, path)
+
+    def test_uploads_go_into_the_folder_being_viewed(self) -> None:
+        self.service.start(allow_uploads=True)
+        self.make_folders()
+        _, page = self.request("GET", "/Photos/Trip/")
+        self.assertIn(b'data-folder="Photos/Trip"', page)
+        response, data = self.request("POST", "/upload?folder=Photos%2FTrip&name=new.jpg", b"new")
+        self.assertEqual(response.status, 201, data)
+        self.assertEqual((self.folder / "Photos" / "Trip" / "new.jpg").read_bytes(), b"new")
+
+    def test_devices_cannot_create_folders_or_upload_outside(self) -> None:
+        self.service.start(allow_uploads=True)
+        self.make_folders()
+        for folder in ["Missing", "Photos%2FMissing", "..", "Photos%2F..%2F..", ".hidden"]:
+            response, _ = self.request("POST", f"/upload?folder={folder}&name=x.txt", b"x")
+            self.assertEqual(response.status, 404, folder)
+        for name in ["Sub%2Fx.txt", "..%2Fx.txt"]:
+            response, _ = self.request("POST", f"/upload?folder=Photos&name={name}", b"x")
+            self.assertEqual(response.status, 400, name)
+        self.assertFalse((self.folder / "Missing").exists())
+        self.assertFalse((self.folder.parent / "x.txt").exists())
+
+    def test_view_only_folders_can_be_browsed_and_unlock_returns_to_them(self) -> None:
+        self.service.start(require_code=True)
+        self.make_folders()
+        _, page = self.request("GET", "/Photos/Trip/")
+        self.assertIn(b"beach.jpg", page)
+        self.assertNotIn(b'href="/Photos/Trip/beach.jpg"', page)
+        response, _ = self.request("GET", "/Photos/Trip/beach.jpg")
+        self.assertEqual(response.status, 401)
+        form = {"Content-Type": "application/x-www-form-urlencoded"}
+        response, _ = self.request("POST", "/unlock", b"code=1111&next=Photos%2FTrip", headers=form)
+        self.assertEqual(response.headers["Location"], "/Photos/Trip/?wrong")
+        response, _ = self.request("POST", "/unlock", b"code=0427&next=Photos%2FTrip", headers=form)
+        self.assertEqual(response.headers["Location"], "/Photos/Trip/")
+        response, _ = self.request("POST", "/unlock", b"code=0427&next=..%2F..", headers=form)
+        self.assertEqual(response.headers["Location"], "/")
+
     def test_rejects_files_over_the_size_limit(self) -> None:
         self.service = FileTransferService(
             self.folder,
