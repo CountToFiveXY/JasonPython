@@ -54,6 +54,11 @@ Leave this terminal open. The script:
 6. Starts the Python Temporal worker.
 7. Starts FastAPI on port 8000, falling back to 8088 and then 8888 when busy.
 
+Running the script again stops the previous session first, so it always
+starts the checkout's current code. FastAPI does not reload on its own when
+code changes; run the script again, or click **Restart Services** on
+JasonApp's Server pane, which runs this script for you.
+
 An existing Redis or Temporal Server instance is reused and will not be stopped
 by the script. By default, Redis saves its snapshot to the parent workspace at
 `/Users/sword23/Workspace/redis/dump.rdb`.
