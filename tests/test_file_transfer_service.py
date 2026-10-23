@@ -8,7 +8,7 @@ from pathlib import Path
 from src.infrastructure.bonjour import HostNameInUseError
 from src.services import FileTransferService
 from src.services.file_transfer.files import list_shared_files
-from src.services.file_transfer.uploads import UploadCodeError
+from src.services.file_transfer.access import UploadCodeError
 
 
 class FakeAnnouncer:
@@ -95,7 +95,7 @@ class FileTransferServerTests(unittest.TestCase):
 
 
 
-class UploadServerTests(unittest.TestCase):
+class AccessServerTests(unittest.TestCase):
     def setUp(self) -> None:
         self._temp = tempfile.TemporaryDirectory()
         self.folder = Path(self._temp.name) / "FileTransfer"
@@ -130,43 +130,86 @@ class UploadServerTests(unittest.TestCase):
         )
         return response
 
-    def test_uploads_are_refused_while_turned_off(self) -> None:
+    def cookie_for(self, code="0427"):
+        return self.unlock(code).headers["Set-Cookie"].split(";")[0]
+
+    def test_defaults_are_open_downloads_and_no_uploads(self) -> None:
         status = self.service.start()
         self.assertFalse(status["allow_uploads"])
-        self.assertIsNone(status["upload_code"])
+        self.assertFalse(status["require_code"])
+        self.assertIsNone(status["access_code"])
+        (self.folder / "notes.txt").write_text("hi")
+        response, data = self.request("GET", "/notes.txt")
+        self.assertEqual((response.status, data), (200, b"hi"))
         response, _ = self.request("POST", "/upload?name=a.txt", b"hi")
         self.assertEqual(response.status, 403)
-        self.assertEqual(list_shared_files(self.folder), [])
+        self.assertEqual(list_shared_files(self.folder), [{"name": "notes.txt", "size": 2}])
 
-    def test_device_uploads_after_entering_the_code(self) -> None:
-        status = self.service.start(allow_uploads=True)
-        self.assertTrue(status["allow_uploads"])
-
-        response, _ = self.request("POST", "/upload?name=a.txt", b"hi")
-        self.assertEqual(response.status, 401)
+    def test_uploads_without_the_code_need_no_unlock(self) -> None:
+        self.service.start(allow_uploads=True)
         _, page = self.request("GET", "/")
-        self.assertIn(b"Unlock uploads", page)
+        self.assertIn(b'id="upload"', page)
+        self.assertNotIn(b"Unlock", page)
+        response, data = self.request("POST", "/upload?name=notes%20one.txt", b"hello")
+        self.assertEqual(response.status, 201, data)
+        self.assertEqual((self.folder / "notes one.txt").read_bytes(), b"hello")
+        response, _ = self.request("POST", "/upload?name=.hidden", b"x")
+        self.assertEqual(response.status, 400)
 
-        self.assertEqual(status["upload_code"], "0427")
+    def test_requiring_the_code_makes_the_list_view_only(self) -> None:
+        status = self.service.start(require_code=True)
+        self.assertTrue(status["require_code"])
+        self.assertEqual(status["access_code"], "0427")
+        (self.folder / "notes.txt").write_text("hi")
+
+        _, page = self.request("GET", "/")
+        self.assertIn(b"notes.txt", page)
+        self.assertNotIn(b'href="/notes.txt"', page)
+        self.assertIn(b"Enter the code to download files.", page)
+        response, _ = self.request("GET", "/notes.txt")
+        self.assertEqual(response.status, 401)
+
         response = self.unlock("1111")
         self.assertEqual(response.headers["Location"], "/?wrong")
         self.assertIsNone(response.headers["Set-Cookie"])
         _, page = self.request("GET", "/?wrong")
         self.assertIn(b"That code is not right", page)
 
-        response = self.unlock(status["upload_code"])
+        response = self.unlock("0427")
         self.assertEqual(response.headers["Location"], "/")
-        cookie = response.headers["Set-Cookie"].split(";")[0]
         self.assertIn("HttpOnly", response.headers["Set-Cookie"])
+        cookie = response.headers["Set-Cookie"].split(";")[0]
+        _, page = self.request("GET", "/", cookie=cookie)
+        self.assertIn(b'href="/notes.txt"', page)
+        response, data = self.request("GET", "/notes.txt", cookie=cookie)
+        self.assertEqual((response.status, data), (200, b"hi"))
 
+    def test_with_the_code_required_uploads_need_it_too(self) -> None:
+        self.service.start(allow_uploads=True, require_code=True)
+        _, page = self.request("GET", "/")
+        self.assertIn(b"Enter the code to download or upload files.", page)
+        self.assertNotIn(b'id="upload"', page)
+        response, _ = self.request("POST", "/upload?name=a.txt", b"hi")
+        self.assertEqual(response.status, 401)
+
+        cookie = self.cookie_for()
         _, page = self.request("GET", "/", cookie=cookie)
         self.assertIn(b'id="upload"', page)
-        response, data = self.request("POST", "/upload?name=notes%20one.txt", b"hello", cookie=cookie)
+        response, data = self.request("POST", "/upload?name=a.txt", b"hi", cookie=cookie)
         self.assertEqual(response.status, 201, data)
-        self.assertEqual((self.folder / "notes one.txt").read_bytes(), b"hello")
 
-        response, _ = self.request("POST", "/upload?name=.hidden", b"x", cookie=cookie)
-        self.assertEqual(response.status, 400)
+    def test_turning_the_code_off_signs_devices_out_and_reopens_downloads(self) -> None:
+        self.service.start(require_code=True)
+        cookie = self.cookie_for()
+        self.service.start(require_code=False)
+        self.service.start(require_code=True)
+        (self.folder / "notes.txt").write_text("hi")
+        response, _ = self.request("GET", "/notes.txt", cookie=cookie)
+        self.assertEqual(response.status, 401)
+        status = self.service.start(require_code=False)
+        self.assertIsNone(status["access_code"])
+        response, _ = self.request("GET", "/notes.txt")
+        self.assertEqual(response.status, 200)
 
     def test_rejects_files_over_the_size_limit(self) -> None:
         self.service = FileTransferService(
@@ -175,44 +218,35 @@ class UploadServerTests(unittest.TestCase):
             host="127.0.0.1",
             announcer=FakeAnnouncer(),
             max_upload_bytes=4,
-            load_upload_code=lambda: "0427",
         )
-        status = self.service.start(allow_uploads=True)
-        cookie = self.unlock(status["upload_code"]).headers["Set-Cookie"].split(";")[0]
-        response, data = self.request("POST", "/upload?name=big.bin", b"12345", cookie=cookie)
+        self.service.start(allow_uploads=True)
+        response, data = self.request("POST", "/upload?name=big.bin", b"12345")
         self.assertEqual(response.status, 413, data)
         self.assertEqual(list_shared_files(self.folder), [])
 
-    def test_turning_uploads_off_while_sharing_keeps_downloads(self) -> None:
-        status = self.service.start(allow_uploads=True)
-        cookie = self.unlock(status["upload_code"]).headers["Set-Cookie"].split(";")[0]
-        status = self.service.start(allow_uploads=False)
-        self.assertTrue(status["running"])
-        self.assertIsNone(status["upload_code"])
-        response, _ = self.request("POST", "/upload?name=a.txt", b"hi", cookie=cookie)
-        self.assertEqual(response.status, 403)
-
-    def test_without_an_upload_code_sharing_stays_download_only(self) -> None:
+    def test_without_a_code_in_firestore_the_code_cannot_be_required(self) -> None:
         self.service.stop()
         self.service = FileTransferService(
             self.folder, port=0, host="127.0.0.1", announcer=FakeAnnouncer()
         )
         with self.assertRaises(UploadCodeError):
-            self.service.start(allow_uploads=True)
+            self.service.start(require_code=True)
         self.assertFalse(self.service.status()["running"])
-        status = self.service.start()
-        with self.assertRaises(UploadCodeError):
-            self.service.start(allow_uploads=True)
-        status = self.service.status()
-        self.assertTrue(status["running"])
-        self.assertFalse(status["allow_uploads"])
-
-    def test_stopping_clears_the_upload_code(self) -> None:
         self.service.start(allow_uploads=True)
+        with self.assertRaises(UploadCodeError):
+            self.service.start(allow_uploads=False, require_code=True)
+        status = self.service.status()
+        # A failed change leaves the switches as they were.
+        self.assertTrue(status["running"])
+        self.assertTrue(status["allow_uploads"])
+        self.assertFalse(status["require_code"])
+
+    def test_stopping_resets_both_switches(self) -> None:
+        self.service.start(allow_uploads=True, require_code=True)
         status = self.service.stop()
         self.assertFalse(status["allow_uploads"])
-        self.assertIsNone(status["upload_code"])
-
+        self.assertFalse(status["require_code"])
+        self.assertIsNone(status["access_code"])
 
 if __name__ == "__main__":
     unittest.main()

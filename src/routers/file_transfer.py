@@ -41,11 +41,13 @@ async def start_file_transfer(
     request: FileTransferStartRequest | None = None,
     service: FileTransferService = Depends(get_file_transfer_service),
 ) -> FileTransferStatus:
-    """Start sharing, or turn uploads on or off while already sharing."""
+    """Start sharing, or change the upload and code switches while sharing."""
 
-    allow_uploads = request.allow_uploads if request else False
+    request = request or FileTransferStartRequest()
     try:
-        status = await run_in_threadpool(service.start, allow_uploads)
+        status = await run_in_threadpool(
+            service.start, request.allow_uploads, request.require_code
+        )
     except HostNameInUseError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except UploadCodeError as exc:

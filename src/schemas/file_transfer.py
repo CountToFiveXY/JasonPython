@@ -10,6 +10,7 @@ class SharedFile(BaseModel):
 
 class FileTransferStartRequest(BaseModel):
     allow_uploads: bool = False
+    require_code: bool = False
 
 
 class FileTransferStatus(BaseModel):
@@ -20,6 +21,7 @@ class FileTransferStatus(BaseModel):
     url: str | None
     ip_url: str | None
     allow_uploads: bool
+    require_code: bool
     # Only this computer can read the status, so the code never leaves it.
-    upload_code: str | None
+    access_code: str | None
     files: list[SharedFile]

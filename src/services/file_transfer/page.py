@@ -33,8 +33,9 @@ $upload
 
 _CODE_FORM = """<section>
 <form method="post" action="/unlock">
-<label>Upload code <input name="code" inputmode="numeric" autocomplete="off" maxlength="4" required></label>
-<button>Unlock uploads</button>
+<p>$purpose</p>
+<label>Code <input name="code" inputmode="numeric" autocomplete="off" maxlength="4" required></label>
+<button>Unlock</button>
 </form>
 $message
 </section>"""
@@ -93,23 +94,31 @@ form.onsubmit = async function (event) {
 def index_page(
     files: list[dict[str, int | str]],
     uploads_enabled: bool = False,
-    unlocked: bool = False,
+    code_required: bool = False,
+    unlocked: bool = True,
     wrong_code: bool = False,
 ) -> str:
-    rows = "".join(
-        f'<li><a href="/{quote(str(file["name"]))}" download>'
-        f'{html.escape(str(file["name"]))}</a>'
-        f'<span>{format_size(int(file["size"]))}</span></li>'
-        for file in files
-    ) or "<li>No files are shared yet.</li>"
-    if not uploads_enabled:
-        upload = ""
-    elif unlocked:
-        upload = _UPLOAD_FORM
+    # Without the code the list is view-only: names and sizes, no links.
+    view_only = code_required and not unlocked
+    rows = "".join(_row(file, view_only) for file in files) or "<li>No files are shared yet.</li>"
+    if view_only:
+        purpose = "Enter the code to download" + (" or upload files." if uploads_enabled else " files.")
+        message = '<p class="error">That code is not right. Ask the person sharing for the code.</p>'
+        section = Template(_CODE_FORM).substitute(
+            purpose=purpose, message=message if wrong_code else ""
+        )
+    elif uploads_enabled:
+        section = _UPLOAD_FORM
     else:
-        message = '<p class="error">That code is not right. Check the code on the sharing Mac.</p>'
-        upload = Template(_CODE_FORM).substitute(message=message if wrong_code else "")
-    return _PAGE.substitute(rows=rows, upload=upload)
+        section = ""
+    return _PAGE.substitute(rows=rows, upload=section)
+
+
+def _row(file: dict[str, int | str], view_only: bool) -> str:
+    name = html.escape(str(file["name"]))
+    if not view_only:
+        name = f'<a href="/{quote(str(file["name"]))}" download>{name}</a>'
+    return f'<li>{name}<span>{format_size(int(file["size"]))}</span></li>'
 
 
 def format_size(size: int) -> str:
