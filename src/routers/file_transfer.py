@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 
 from src.dependencies import get_file_transfer_service
-from src.schemas import FileTransferStatus
+from src.schemas import FileTransferStartRequest, FileTransferStatus
 from src.services import FileTransferService
 from src.services.file_transfer import HostNameInUseError
 
@@ -38,10 +38,14 @@ async def file_transfer_status(
 
 @router.post("/start", response_model=FileTransferStatus)
 async def start_file_transfer(
+    request: FileTransferStartRequest | None = None,
     service: FileTransferService = Depends(get_file_transfer_service),
 ) -> FileTransferStatus:
+    """Start sharing, or turn uploads on or off while already sharing."""
+
+    allow_uploads = request.allow_uploads if request else False
     try:
-        status = await run_in_threadpool(service.start)
+        status = await run_in_threadpool(service.start, allow_uploads)
     except HostNameInUseError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except OSError as exc:

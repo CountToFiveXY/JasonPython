@@ -8,6 +8,10 @@ class SharedFile(BaseModel):
     size: int
 
 
+class FileTransferStartRequest(BaseModel):
+    allow_uploads: bool = False
+
+
 class FileTransferStatus(BaseModel):
     running: bool
     folder: str
@@ -15,4 +19,7 @@ class FileTransferStatus(BaseModel):
     host_name: str | None
     url: str | None
     ip_url: str | None
+    allow_uploads: bool
+    # Only this computer can read the status, so the code never leaves it.
+    upload_code: str | None
     files: list[SharedFile]

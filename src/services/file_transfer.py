@@ -1,17 +1,28 @@
-"""Download-only LAN file server for the local FileTransfer folder."""
+"""LAN file server for the local FileTransfer folder.
 
+Devices can always download. Uploading is off unless the host turns it on,
+and then each device must first enter the upload code shown on the host Mac.
+"""
+
+import hmac
 import html
+import itertools
+import json
 import mimetypes
 import os
+import secrets
 import selectors
 import shutil
 import socket
 import subprocess
 import threading
 import time
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import quote, unquote, urlsplit
+from string import Template
+from typing import BinaryIO
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 FILE_TRANSFER_DIR = Path(
     os.getenv(
@@ -24,6 +35,12 @@ FILE_TRANSFER_PORT = int(os.getenv("FILE_TRANSFER_PORT", "80"))
 # Whichever Mac is sharing announces this name, so every device can use
 # the same address no matter which Mac hosts.
 FILE_TRANSFER_HOST_NAME = os.getenv("FILE_TRANSFER_HOST_NAME", "jason.local")
+MAX_UPLOAD_BYTES = int(float(os.getenv("FILE_TRANSFER_MAX_UPLOAD_GB", "10")) * 1024**3)
+# Room left on the disk after an upload, so a phone cannot fill the Mac.
+MIN_FREE_BYTES = 1024**3
+UPLOAD_COOKIE = "jasonapp_upload"
+# Wrong codes allowed before the code is replaced, which bounds guessing.
+MAX_CODE_FAILURES = 10
 
 
 class HostNameInUseError(RuntimeError):
@@ -54,6 +71,18 @@ def list_shared_files(folder: Path) -> list[dict[str, int | str]]:
     return sorted(files, key=lambda file: str(file["name"]).lower())
 
 
+def valid_name(name: str) -> bool:
+    """A visible file name directly inside the folder: no paths or hidden files."""
+
+    return (
+        bool(name)
+        and not name.startswith(".")
+        and not any(c in name for c in "/\\")
+        and not any(ord(c) < 32 or ord(c) == 127 for c in name)
+        and len(name.encode("utf-8")) <= 255
+    )
+
+
 def shared_file(folder: Path, name: str) -> Path | None:
     """Resolve a requested name, refusing anything outside the shared folder.
 
@@ -61,7 +90,7 @@ def shared_file(folder: Path, name: str) -> Path | None:
     hidden files, or symlinks that could point elsewhere on this computer.
     """
 
-    if not name or name.startswith(".") or any(c in name for c in "/\\\0"):
+    if not valid_name(name):
         return None
     path = folder / name
     if path.is_symlink() or not path.is_file():
@@ -107,32 +136,192 @@ def _default_route_address() -> str | None:
     return None if address.startswith(("127.", "0.")) else address
 
 
-def _index_page(files: list[dict[str, int | str]]) -> str:
-    rows = "".join(
-        f'<li><a href="/{quote(str(file["name"]))}" download>'
-        f'{html.escape(str(file["name"]))}</a>'
-        f'<span>{_format_size(int(file["size"]))}</span></li>'
-        for file in files
-    ) or "<li>No files are shared yet.</li>"
-    return f"""<!doctype html>
+class UploadAccess:
+    """Whether uploads are on, and the code devices enter to unlock them.
+
+    A device that enters the code gets a cookie holding a random session
+    token, so it is asked only once per sharing session. Turning uploads
+    off and on again issues a new code and signs every device out.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.enabled = False
+        self.code = ""
+        self.token = ""
+        self._failures = 0
+
+    def set_enabled(self, enabled: bool) -> None:
+        with self._lock:
+            if enabled and not self.enabled:
+                self.code = _new_code()
+                self.token = secrets.token_urlsafe(32)
+                self._failures = 0
+            elif not enabled:
+                self.code = self.token = ""
+            self.enabled = enabled
+
+    def unlock(self, code: str) -> str | None:
+        """The session token for a correct code; None otherwise."""
+
+        with self._lock:
+            if not self.enabled:
+                return None
+            if hmac.compare_digest(code.strip(), self.code):
+                self._failures = 0
+                return self.token
+            self._failures += 1
+            if self._failures >= MAX_CODE_FAILURES:
+                # Too many guesses: replace the code the host shows.
+                self.code = _new_code()
+                self._failures = 0
+            return None
+
+    def allows(self, token: str | None) -> bool:
+        with self._lock:
+            return self.enabled and bool(token) and hmac.compare_digest(token, self.token)
+
+
+def _new_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def save_upload(folder: Path, name: str, body: BinaryIO, length: int) -> str:
+    """Store an upload under a free name and return the name it was saved as.
+
+    The body goes to a hidden temporary file first, so a half-finished upload
+    is never listed or downloaded, and an existing file is never replaced:
+    a clash is saved as "name (1).ext".
+    """
+
+    temporary = folder / f".upload-{secrets.token_hex(8)}.part"
+    try:
+        with temporary.open("xb") as output:
+            remaining = length
+            while remaining:
+                chunk = body.read(min(1024 * 1024, remaining))
+                if not chunk:
+                    raise ConnectionError("The upload was interrupted.")
+                output.write(chunk)
+                remaining -= len(chunk)
+        stem, suffix = os.path.splitext(name)
+        for attempt in itertools.count():
+            candidate = name if attempt == 0 else f"{stem} ({attempt}){suffix}"
+            try:
+                # A hard link fails rather than overwrite, even if two
+                # uploads pick the same name at the same moment.
+                os.link(temporary, folder / candidate)
+                return candidate
+            except FileExistsError:
+                continue
+    finally:
+        temporary.unlink(missing_ok=True)
+    raise AssertionError("unreachable")
+
+
+_PAGE = Template("""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>JasonApp File Transfer</title>
 <style>
-body {{ font: 16px -apple-system, system-ui, sans-serif; margin: 0 auto; max-width: 720px; padding: 16px; }}
-ul {{ list-style: none; padding: 0; }}
-li {{ display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #8884; }}
-a {{ overflow-wrap: anywhere; }}
-span {{ color: #888; white-space: nowrap; }}
+body { font: 16px -apple-system, system-ui, sans-serif; margin: 0 auto; max-width: 720px; padding: 16px; }
+ul { list-style: none; padding: 0; }
+li { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #8884; }
+a { overflow-wrap: anywhere; }
+span { color: #888; white-space: nowrap; }
+section { padding: 12px; border: 1px solid #8886; border-radius: 10px; }
+input, button { font: inherit; }
+progress { width: 100%; }
+.error { color: #d33; }
 </style>
 </head>
 <body>
 <h1>File Transfer</h1>
-<ul>{rows}</ul>
+$upload
+<ul>$rows</ul>
 </body>
-</html>"""
+</html>""")
+
+_CODE_FORM = """<section>
+<form method="post" action="/unlock">
+<label>Upload code <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label>
+<button>Unlock uploads</button>
+</form>
+$message
+</section>"""
+
+_UPLOAD_FORM = """<section>
+<form id="upload">
+<input type="file" id="files" multiple required>
+<button>Upload</button>
+</form>
+<progress id="progress" value="0" max="1" hidden></progress>
+<p id="status"></p>
+</section>
+<script>
+const form = document.getElementById("upload");
+const progress = document.getElementById("progress");
+const status = document.getElementById("status");
+function send(file) {
+  return new Promise(function (resolve, reject) {
+    const request = new XMLHttpRequest();
+    request.open("POST", "/upload?name=" + encodeURIComponent(file.name));
+    request.upload.onprogress = function (event) {
+      if (event.lengthComputable) progress.value = event.loaded / event.total;
+    };
+    request.onload = function () {
+      if (request.status === 201) return resolve();
+      if (request.status === 401) location.reload();
+      let message = "Upload failed.";
+      try { message = JSON.parse(request.responseText).error; } catch (error) {}
+      reject(new Error(message));
+    };
+    request.onerror = function () { reject(new Error("Upload failed. Check the connection.")); };
+    request.send(file);
+  });
+}
+form.onsubmit = async function (event) {
+  event.preventDefault();
+  const files = Array.from(document.getElementById("files").files);
+  progress.hidden = false;
+  try {
+    for (let index = 0; index < files.length; index++) {
+      status.textContent = "Uploading " + (index + 1) + " of " + files.length + ": " + files[index].name;
+      progress.value = 0;
+      await send(files[index]);
+    }
+    location.reload();
+  } catch (error) {
+    progress.hidden = true;
+    status.className = "error";
+    status.textContent = error.message;
+  }
+};
+</script>"""
+
+
+def _index_page(
+    files: list[dict[str, int | str]],
+    uploads_enabled: bool = False,
+    unlocked: bool = False,
+    wrong_code: bool = False,
+) -> str:
+    rows = "".join(
+        f'<li><a href="/{quote(str(file["name"]))}" download>'
+        f'{html.escape(str(file["name"]))}</a>'
+        f'<span>{_format_size(int(file["size"]))}</span></li>'
+        for file in files
+    ) or "<li>No files are shared yet.</li>"
+    if not uploads_enabled:
+        upload = ""
+    elif unlocked:
+        upload = _UPLOAD_FORM
+    else:
+        message = '<p class="error">That code is not right. Check the code on the sharing Mac.</p>'
+        upload = Template(_CODE_FORM).substitute(message=message if wrong_code else "")
+    return _PAGE.substitute(rows=rows, upload=upload)
 
 
 def _format_size(size: int) -> str:
@@ -144,17 +333,18 @@ def _format_size(size: int) -> str:
     return f"{size} B"
 
 
-class _DownloadServer(ThreadingHTTPServer):
+class _TransferServer(ThreadingHTTPServer):
     daemon_threads = True
     folder: Path
+    uploads: UploadAccess
 
     def handle_error(self, request, client_address) -> None:  # type: ignore[override]
-        # A device closing the page mid-download is routine, not an error.
+        # A device closing the page mid-transfer is routine, not an error.
         pass
 
 
-class _DownloadHandler(BaseHTTPRequestHandler):
-    server: _DownloadServer
+class _TransferHandler(BaseHTTPRequestHandler):
+    server: _TransferServer
     server_version = "JasonAppFileTransfer"
     sys_version = ""
     timeout = 60
@@ -165,11 +355,27 @@ class _DownloadHandler(BaseHTTPRequestHandler):
     def do_HEAD(self) -> None:
         self._serve(include_body=False)
 
+    def do_POST(self) -> None:
+        path = urlsplit(self.path).path
+        if path == "/unlock":
+            self._unlock()
+        elif path == "/upload":
+            self._upload()
+        else:
+            self._reject(404, "Not found.")
+
     def _serve(self, include_body: bool) -> None:
         folder = self.server.folder
-        path = unquote(urlsplit(self.path).path)
+        url = urlsplit(self.path)
+        path = unquote(url.path)
         if path == "/":
-            body = _index_page(list_shared_files(folder)).encode("utf-8")
+            uploads = self.server.uploads
+            body = _index_page(
+                list_shared_files(folder),
+                uploads_enabled=uploads.enabled,
+                unlocked=uploads.allows(self._upload_token()),
+                wrong_code="wrong" in parse_qs(url.query, keep_blank_values=True),
+            ).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -202,6 +408,101 @@ class _DownloadHandler(BaseHTTPRequestHandler):
             if include_body:
                 shutil.copyfileobj(handle, self.wfile, 1024 * 1024)
 
+    def _unlock(self) -> None:
+        length = self._content_length()
+        if length is None or length > 1024:
+            self._reject(400, "Send the upload code.")
+            return
+        form = parse_qs(self.rfile.read(length).decode("utf-8", "replace"))
+        token = self.server.uploads.unlock(form.get("code", [""])[0])
+        if token is None:
+            # Slow down guessing; the code is also replaced after repeated misses.
+            time.sleep(1)
+            self.log_message("wrong upload code")
+        self.send_response(303)
+        self.send_header("Location", "/" if token else "/?wrong")
+        if token:
+            self.send_header(
+                "Set-Cookie",
+                f"{UPLOAD_COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict",
+            )
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _upload(self) -> None:
+        uploads = self.server.uploads
+        if not uploads.enabled:
+            self._reject(403, "Uploads are turned off on the sharing Mac.")
+            return
+        if not uploads.allows(self._upload_token()):
+            self._reject(401, "Enter the upload code first.")
+            return
+        name = parse_qs(urlsplit(self.path).query).get("name", [""])[0]
+        if not valid_name(name):
+            self._reject(400, "That file name cannot be used.")
+            return
+        length = self._content_length()
+        if length is None:
+            self._reject(411, "The upload size is missing.")
+            return
+        if length > MAX_UPLOAD_BYTES:
+            limit = _format_size(MAX_UPLOAD_BYTES)
+            self._reject(413, f"Files can be up to {limit}.")
+            return
+        folder = self.server.folder
+        if shutil.disk_usage(folder).free < length + MIN_FREE_BYTES:
+            self._reject(507, "The sharing Mac does not have enough free space.")
+            return
+        try:
+            saved = save_upload(folder, name, self.rfile, length)
+        except (ConnectionError, TimeoutError):
+            self.close_connection = True
+            return
+        except OSError:
+            self._reject(500, "The file could not be saved.")
+            return
+        self.log_message("uploaded %s (%d bytes)", saved, length)
+        self._send_json(201, {"name": saved})
+
+    def _upload_token(self) -> str | None:
+        cookie = SimpleCookie()
+        try:
+            cookie.load(self.headers.get("Cookie", ""))
+        except Exception:
+            return None
+        morsel = cookie.get(UPLOAD_COOKIE)
+        return morsel.value if morsel else None
+
+    def _content_length(self) -> int | None:
+        try:
+            length = int(self.headers["Content-Length"])
+        except (TypeError, ValueError):
+            return None
+        return length if length >= 0 else None
+
+    def _reject(self, status: int, message: str) -> None:
+        # The body may still be arriving; close instead of reading it.
+        self.close_connection = True
+        self._send_json(status, {"error": message})
+
+    def _send_json(self, status: int, payload: dict) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+# Runs dns-sd and kills it once the pipe from this process closes, which
+# also happens if the API crashes or is force-quit. Without it an orphaned
+# dns-sd would keep claiming the name and lock out every other Mac.
+_TIED_TO_PARENT = (
+    'exec 3<&0; dns-sd "$@" </dev/null & child=$!; '
+    '{ read -r _ <&3; kill "$child" 2>/dev/null; } & '
+    'wait "$child"'
+)
+
 
 class BonjourAnnouncer:
     """Announces a .local name for this Mac through macOS's own Bonjour service.
@@ -223,14 +524,19 @@ class BonjourAnnouncer:
         """Announce the name; False when Bonjour is unavailable on this system."""
 
         self.release()
+        if shutil.which("dns-sd") is None:
+            return False
         try:
             process = subprocess.Popen(
                 [
-                    "dns-sd", "-P", "JasonApp Files", "_http._tcp", "local",
+                    "/bin/sh", "-c", _TIED_TO_PARENT, "dns-sd",
+                    "-P", "JasonApp Files", "_http._tcp", "local",
                     str(port), self.host_name, address,
                 ],
+                stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
+                start_new_session=True,
             )
         except OSError:
             return False
@@ -263,8 +569,7 @@ class BonjourAnnouncer:
                 if any("Name in use" in line for line in replies):
                     in_use = True
                     break
-        process.kill()
-        process.wait()
+        self._end(process)
         if in_use:
             raise HostNameInUseError(self.host_name, self._current_owner())
         # Bonjour did not answer in time; devices can still use the IP address.
@@ -272,12 +577,24 @@ class BonjourAnnouncer:
 
     def release(self) -> None:
         process, self._process = self._process, None
-        if process is not None and process.poll() is None:
-            process.terminate()
+        if process is not None:
+            self._end(process)
+
+    @staticmethod
+    def _end(process: subprocess.Popen[bytes]) -> None:
+        """Withdraw the name: closing the pipe makes the wrapper stop dns-sd."""
+
+        if process.stdin is not None:
+            process.stdin.close()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            # The wrapper and dns-sd share a session of their own.
             try:
-                process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                process.kill()
+                os.killpg(process.pid, 9)
+            except ProcessLookupError:
+                pass
+            process.wait()
 
     def _current_owner(self) -> str | None:
         try:
@@ -287,7 +604,7 @@ class BonjourAnnouncer:
 
 
 class FileTransferService:
-    """Starts and stops one download server shared by every API request."""
+    """Starts and stops one transfer server shared by every API request."""
 
     def __init__(
         self,
@@ -300,26 +617,32 @@ class FileTransferService:
         self._preferred_port = port
         self._host = host
         self._announcer = announcer or BonjourAnnouncer()
-        self._server: _DownloadServer | None = None
+        self._uploads = UploadAccess()
+        self._server: _TransferServer | None = None
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
 
-    def start(self) -> dict:
+    def start(self, allow_uploads: bool = False) -> dict:
+        """Start sharing, or change whether uploads are allowed while sharing."""
+
         with self._lock:
+            self._uploads.set_enabled(allow_uploads)
             if self._server is None:
                 self.folder.mkdir(parents=True, exist_ok=True)
                 try:
-                    server = _DownloadServer((self._host, self._preferred_port), _DownloadHandler)
+                    server = _TransferServer((self._host, self._preferred_port), _TransferHandler)
                 except OSError:
                     # The preferred port is taken; let the system pick a free one.
-                    server = _DownloadServer((self._host, 0), _DownloadHandler)
+                    server = _TransferServer((self._host, 0), _TransferHandler)
                 server.folder = self.folder
+                server.uploads = self._uploads
                 address = lan_address()
                 if address is not None:
                     try:
                         self._announcer.claim(address, server.server_address[1])
                     except HostNameInUseError:
                         server.server_close()
+                        self._uploads.set_enabled(False)
                         raise
                 thread = threading.Thread(
                     target=server.serve_forever,
@@ -335,6 +658,7 @@ class FileTransferService:
             server, thread = self._server, self._thread
             self._server, self._thread = None, None
             self._announcer.release()
+            self._uploads.set_enabled(False)
             if server is not None:
                 server.shutdown()
                 server.server_close()
@@ -355,6 +679,8 @@ class FileTransferService:
             "host_name": host_name,
             "url": _url(host_name, port) if host_name and port else ip_url,
             "ip_url": ip_url,
+            "allow_uploads": self._uploads.enabled,
+            "upload_code": self._uploads.code or None,
             "files": list_shared_files(self.folder),
         }
 

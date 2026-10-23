@@ -1,3 +1,5 @@
+import http.client
+import io
 import os
 import shutil
 import tempfile
@@ -13,11 +15,16 @@ from fastapi import HTTPException
 
 from src.routers.file_transfer import require_local_client
 from src.services import FileTransferService
+from src.services import file_transfer
 from src.services.file_transfer import (
+    MAX_CODE_FAILURES,
     BonjourAnnouncer,
     HostNameInUseError,
+    UploadAccess,
     list_shared_files,
+    save_upload,
     shared_file,
+    valid_name,
 )
 
 
@@ -148,6 +155,178 @@ class BonjourAnnouncerTests(unittest.TestCase):
             first.release()
             second.release()
         self.assertFalse(first.is_active)
+
+
+class ValidNameTests(unittest.TestCase):
+    def test_accepts_ordinary_phone_file_names(self) -> None:
+        for name in ["IMG_1234.HEIC", "report (final).pdf", "照片.jpg"]:
+            self.assertTrue(valid_name(name), name)
+
+    def test_rejects_paths_hidden_and_control_characters(self) -> None:
+        for name in ["", ".env", "../x", "a/b", "a\\b", "bad\nname", "x" * 256]:
+            self.assertFalse(valid_name(name), repr(name))
+
+
+class UploadAccessTests(unittest.TestCase):
+    def test_off_until_enabled(self) -> None:
+        access = UploadAccess()
+        self.assertFalse(access.enabled)
+        self.assertIsNone(access.unlock(""))
+
+    def test_correct_code_returns_a_session_token(self) -> None:
+        access = UploadAccess()
+        access.set_enabled(True)
+        self.assertRegex(access.code, r"^\d{6}$")
+        self.assertIsNone(access.unlock("not it"))
+        token = access.unlock(access.code)
+        self.assertTrue(access.allows(token))
+        self.assertFalse(access.allows("forged"))
+        self.assertFalse(access.allows(None))
+
+    def test_repeated_wrong_codes_replace_the_code(self) -> None:
+        access = UploadAccess()
+        access.set_enabled(True)
+        token = access.unlock(access.code)
+        old_code = access.code
+        for _ in range(MAX_CODE_FAILURES):
+            access.unlock("wrong")
+        self.assertNotEqual(access.code, old_code)
+        self.assertIsNone(access.unlock(old_code))
+        # Devices that already unlocked keep working.
+        self.assertTrue(access.allows(token))
+
+    def test_turning_uploads_off_signs_every_device_out(self) -> None:
+        access = UploadAccess()
+        access.set_enabled(True)
+        token = access.unlock(access.code)
+        access.set_enabled(False)
+        self.assertFalse(access.allows(token))
+        access.set_enabled(True)
+        self.assertFalse(access.allows(token))
+
+    def test_staying_enabled_keeps_the_code(self) -> None:
+        access = UploadAccess()
+        access.set_enabled(True)
+        code = access.code
+        access.set_enabled(True)
+        self.assertEqual(access.code, code)
+
+
+class SaveUploadTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp = tempfile.TemporaryDirectory()
+        self.folder = Path(self._temp.name)
+
+    def tearDown(self) -> None:
+        self._temp.cleanup()
+
+    def test_saves_without_replacing_existing_files(self) -> None:
+        (self.folder / "photo.jpg").write_bytes(b"old")
+        self.assertEqual(save_upload(self.folder, "photo.jpg", io.BytesIO(b"new"), 3), "photo (1).jpg")
+        self.assertEqual(save_upload(self.folder, "photo.jpg", io.BytesIO(b"3rd"), 3), "photo (2).jpg")
+        self.assertEqual((self.folder / "photo.jpg").read_bytes(), b"old")
+        self.assertEqual((self.folder / "photo (1).jpg").read_bytes(), b"new")
+
+    def test_interrupted_upload_leaves_nothing_behind(self) -> None:
+        with self.assertRaises(ConnectionError):
+            save_upload(self.folder, "video.mov", io.BytesIO(b"half"), 100)
+        self.assertEqual(list(self.folder.iterdir()), [])
+
+
+class UploadServerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp = tempfile.TemporaryDirectory()
+        self.folder = Path(self._temp.name) / "FileTransfer"
+        self.service = FileTransferService(
+            self.folder, port=0, host="127.0.0.1", announcer=FakeAnnouncer()
+        )
+
+    def tearDown(self) -> None:
+        self.service.stop()
+        self._temp.cleanup()
+
+    def request(self, method, path, body=b"", cookie=None, headers=None):
+        port = self.service.status()["port"]
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        all_headers = dict(headers or {})
+        if cookie:
+            all_headers["Cookie"] = cookie
+        connection.request(method, path, body=body, headers=all_headers)
+        response = connection.getresponse()
+        data = response.read()
+        connection.close()
+        return response, data
+
+    def unlock(self, code):
+        response, _ = self.request(
+            "POST", "/unlock", f"code={code}".encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        return response
+
+    def test_uploads_are_refused_while_turned_off(self) -> None:
+        status = self.service.start()
+        self.assertFalse(status["allow_uploads"])
+        self.assertIsNone(status["upload_code"])
+        response, _ = self.request("POST", "/upload?name=a.txt", b"hi")
+        self.assertEqual(response.status, 403)
+        self.assertEqual(list_shared_files(self.folder), [])
+
+    def test_device_uploads_after_entering_the_code(self) -> None:
+        status = self.service.start(allow_uploads=True)
+        self.assertTrue(status["allow_uploads"])
+
+        response, _ = self.request("POST", "/upload?name=a.txt", b"hi")
+        self.assertEqual(response.status, 401)
+        _, page = self.request("GET", "/")
+        self.assertIn(b"Unlock uploads", page)
+
+        response = self.unlock("000000" if status["upload_code"] != "000000" else "111111")
+        self.assertEqual(response.headers["Location"], "/?wrong")
+        self.assertIsNone(response.headers["Set-Cookie"])
+        _, page = self.request("GET", "/?wrong")
+        self.assertIn(b"That code is not right", page)
+
+        response = self.unlock(status["upload_code"])
+        self.assertEqual(response.headers["Location"], "/")
+        cookie = response.headers["Set-Cookie"].split(";")[0]
+        self.assertIn("HttpOnly", response.headers["Set-Cookie"])
+
+        _, page = self.request("GET", "/", cookie=cookie)
+        self.assertIn(b'id="upload"', page)
+        response, data = self.request("POST", "/upload?name=notes%20one.txt", b"hello", cookie=cookie)
+        self.assertEqual(response.status, 201, data)
+        self.assertEqual((self.folder / "notes one.txt").read_bytes(), b"hello")
+
+        response, _ = self.request("POST", "/upload?name=.hidden", b"x", cookie=cookie)
+        self.assertEqual(response.status, 400)
+
+    def test_rejects_files_over_the_size_limit(self) -> None:
+        status = self.service.start(allow_uploads=True)
+        cookie = self.unlock(status["upload_code"]).headers["Set-Cookie"].split(";")[0]
+        limit = file_transfer.MAX_UPLOAD_BYTES
+        file_transfer.MAX_UPLOAD_BYTES = 4
+        try:
+            response, data = self.request("POST", "/upload?name=big.bin", b"12345", cookie=cookie)
+        finally:
+            file_transfer.MAX_UPLOAD_BYTES = limit
+        self.assertEqual(response.status, 413, data)
+        self.assertEqual(list_shared_files(self.folder), [])
+
+    def test_turning_uploads_off_while_sharing_keeps_downloads(self) -> None:
+        status = self.service.start(allow_uploads=True)
+        cookie = self.unlock(status["upload_code"]).headers["Set-Cookie"].split(";")[0]
+        status = self.service.start(allow_uploads=False)
+        self.assertTrue(status["running"])
+        self.assertIsNone(status["upload_code"])
+        response, _ = self.request("POST", "/upload?name=a.txt", b"hi", cookie=cookie)
+        self.assertEqual(response.status, 403)
+
+    def test_stopping_clears_the_upload_code(self) -> None:
+        self.service.start(allow_uploads=True)
+        status = self.service.stop()
+        self.assertFalse(status["allow_uploads"])
+        self.assertIsNone(status["upload_code"])
 
 
 class LocalClientTests(unittest.TestCase):
