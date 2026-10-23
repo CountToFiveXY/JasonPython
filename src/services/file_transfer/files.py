@@ -10,21 +10,36 @@ from typing import BinaryIO
 def list_shared_files(folder: Path) -> list[dict[str, int | str]]:
     """Visible regular files directly inside the folder, sorted by name."""
 
+    return list_folder(folder)[1]
+
+
+def list_folder(folder: Path) -> tuple[list[str], list[dict[str, int | str]]]:
+    """Visible subfolders and regular files directly inside a folder, by name.
+
+    Symlinks are left out, so nothing outside the shared folder shows up.
+    """
+
     if not folder.is_dir():
-        return []
-    files = []
+        return [], []
+    folders, files = [], []
     with os.scandir(folder) as entries:
         for entry in entries:
-            if entry.name.startswith(".") or not entry.is_file(follow_symlinks=False):
+            if entry.name.startswith("."):
                 continue
-            files.append(
-                {"name": entry.name, "size": entry.stat(follow_symlinks=False).st_size}
-            )
-    return sorted(files, key=lambda file: str(file["name"]).lower())
+            if entry.is_dir(follow_symlinks=False):
+                folders.append(entry.name)
+            elif entry.is_file(follow_symlinks=False):
+                files.append(
+                    {"name": entry.name, "size": entry.stat(follow_symlinks=False).st_size}
+                )
+    return (
+        sorted(folders, key=str.lower),
+        sorted(files, key=lambda file: str(file["name"]).lower()),
+    )
 
 
 def valid_name(name: str) -> bool:
-    """A visible file name directly inside the folder: no paths or hidden files."""
+    """A visible file or folder name: no paths, hidden names, or control characters."""
 
     return (
         bool(name)
@@ -35,19 +50,61 @@ def valid_name(name: str) -> bool:
     )
 
 
-def shared_file(folder: Path, name: str) -> Path | None:
-    """Resolve a requested name, refusing anything outside the shared folder.
+def path_parts(relative: str) -> list[str] | None:
+    """Split a path such as "Photos/Trip" into names, or None if any is unsafe.
 
-    Only plain files directly inside the folder are served: no subfolders,
-    hidden files, or symlinks that could point elsewhere on this computer.
+    Every part must be a visible, ordinary name, so "..", hidden names and
+    backslashes can never reach outside the shared folder. "" is the shared
+    folder itself.
     """
 
-    if not valid_name(name):
+    relative = relative.strip("/")
+    if not relative:
+        return []
+    parts = relative.split("/")
+    return parts if all(valid_name(part) for part in parts) else None
+
+
+def shared_folder(root: Path, relative: str) -> Path | None:
+    """A folder inside the shared folder, or None when it is not one.
+
+    Each step must be a real folder, not a symlink, and the result must
+    still sit inside the shared folder.
+    """
+
+    parts = path_parts(relative)
+    if parts is None:
         return None
-    path = folder / name
+    path = root
+    for part in parts:
+        path = path / part
+        if path.is_symlink() or not path.is_dir():
+            return None
+    return path if _inside(root, path) else None
+
+
+def shared_file(root: Path, relative: str) -> Path | None:
+    """A regular file inside the shared folder or one of its subfolders.
+
+    Hidden files, symlinks, and anything outside the shared folder are
+    refused.
+    """
+
+    parts = path_parts(relative)
+    if not parts:
+        return None
+    folder = shared_folder(root, "/".join(parts[:-1]))
+    if folder is None:
+        return None
+    path = folder / parts[-1]
     if path.is_symlink() or not path.is_file():
         return None
-    return path
+    return path if _inside(root, path) else None
+
+
+def _inside(root: Path, path: Path) -> bool:
+    # A last check after the per-step rules: the real path stays inside.
+    return path.resolve().is_relative_to(root.resolve())
 
 
 def save_upload(folder: Path, name: str, body: BinaryIO, length: int) -> str:

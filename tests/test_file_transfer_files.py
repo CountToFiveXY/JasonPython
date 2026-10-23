@@ -5,9 +5,12 @@ import unittest
 from pathlib import Path
 
 from src.services.file_transfer.files import (
+    list_folder,
     list_shared_files,
+    path_parts,
     save_upload,
     shared_file,
+    shared_folder,
     valid_name,
 )
 
@@ -38,6 +41,67 @@ class SharedFileTests(unittest.TestCase):
         for name in ["", "../secret.txt", "..", ".DS_Store", "nested", "link.txt", "a/b", "a\\b"]:
             self.assertIsNone(shared_file(self.folder, name), name)
 
+
+
+class SubfolderTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp = tempfile.TemporaryDirectory()
+        self.outside = Path(self._temp.name)
+        self.root = self.outside / "FileTransfer"
+        (self.root / "Photos" / "Trip").mkdir(parents=True)
+        (self.root / "Photos" / "Trip" / "beach.jpg").write_bytes(b"jpg")
+        (self.root / "Photos" / "cover.png").write_bytes(b"png")
+        (self.root / ".private").mkdir()
+        (self.root / ".private" / "notes.txt").write_text("hidden")
+        (self.outside / "secret.txt").write_text("outside")
+        (self.outside / "Elsewhere").mkdir()
+        (self.outside / "Elsewhere" / "data.txt").write_text("outside")
+        # A folder shortcut pointing outside the shared folder.
+        os.symlink(self.outside / "Elsewhere", self.root / "Shortcut")
+
+    def tearDown(self) -> None:
+        self._temp.cleanup()
+
+    def test_lists_visible_real_folders_only(self) -> None:
+        folders, files = list_folder(self.root)
+        self.assertEqual((folders, files), (["Photos"], []))
+        folders, files = list_folder(self.root / "Photos")
+        self.assertEqual(folders, ["Trip"])
+        self.assertEqual(files, [{"name": "cover.png", "size": 3}])
+
+    def test_finds_files_and_folders_at_any_depth(self) -> None:
+        self.assertEqual(shared_folder(self.root, ""), self.root)
+        self.assertEqual(shared_folder(self.root, "/Photos/Trip/"), self.root / "Photos" / "Trip")
+        self.assertEqual(
+            shared_file(self.root, "/Photos/Trip/beach.jpg"),
+            self.root / "Photos" / "Trip" / "beach.jpg",
+        )
+
+    def test_refuses_every_way_out_of_the_shared_folder(self) -> None:
+        escapes = [
+            "../secret.txt",
+            "Photos/../../secret.txt",
+            "Photos/Trip/../../../secret.txt",
+            "..",
+            "Shortcut/data.txt",
+            ".private/notes.txt",
+            "Photos//Trip/beach.jpg",
+            "Photos\\Trip\\beach.jpg",
+            "Photos/./Trip/beach.jpg",
+        ]
+        for path in escapes:
+            self.assertIsNone(shared_file(self.root, path), path)
+        for path in ["..", "../Elsewhere", "Shortcut", ".private", "Photos/../..", "Missing"]:
+            self.assertIsNone(shared_folder(self.root, path), path)
+
+    def test_a_folder_is_not_a_file_and_a_file_is_not_a_folder(self) -> None:
+        self.assertIsNone(shared_file(self.root, "Photos/Trip"))
+        self.assertIsNone(shared_folder(self.root, "Photos/cover.png"))
+
+    def test_path_parts(self) -> None:
+        self.assertEqual(path_parts("/"), [])
+        self.assertEqual(path_parts("/Photos/Trip/"), ["Photos", "Trip"])
+        self.assertIsNone(path_parts("Photos/../Trip"))
 
 
 class ValidNameTests(unittest.TestCase):
