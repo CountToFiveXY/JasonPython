@@ -36,6 +36,23 @@ brew --version
 
 If Homebrew is not installed, get it from <https://brew.sh>.
 
+## Start only the core services
+
+```bash
+./scripts/run_local.sh --core  # Start Redis and FastAPI only.
+```
+
+The core startup runs Redis and FastAPI, which reads Firestore. It does not
+install, start, or wait for Kafka, Temporal, or their workers. FastAPI gives
+Temporal and Kafka five seconds each to connect and then starts without them:
+the workflow and order APIs (Temporal) and the messages API (Kafka) return
+`503` saying the service is not running, `/health` reports `kafka:
+"unavailable"`, and everything else works. JasonApp runs this when it opens
+and the backend is down.
+
+Run the script without `--core` to start everything; it stops the core
+session first.
+
 ## Start the complete local environment
 
 Run one command from the project root:

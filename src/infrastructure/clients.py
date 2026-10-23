@@ -2,7 +2,7 @@ import asyncio
 import os
 import json
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 import firebase_admin
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
@@ -31,29 +31,36 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 TEMPORAL_ADDRESS = os.getenv("TEMPORAL_ADDRESS", "127.0.0.1:7233")
 TEMPORAL_NAMESPACE = os.getenv("TEMPORAL_NAMESPACE", "default")
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "jasonapp-xm0830")
+# Temporal and Kafka are optional: the core startup runs only Redis and the
+# API, so give each a short chance to connect and carry on without it.
+OPTIONAL_SERVICE_TIMEOUT = float(os.getenv("OPTIONAL_SERVICE_TIMEOUT", "5"))
+START_ALL_HINT = "Click Activate All Services in JasonApp to start it."
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     redis_client = Redis.from_url(REDIS_URL, decode_responses=True)
     await redis_client.ping()
-    temporal_client = await Client.connect(
-        TEMPORAL_ADDRESS,
-        namespace=TEMPORAL_NAMESPACE,
+    temporal_client, kafka_producer, scheduler_consumer = await asyncio.gather(
+        _connect_temporal(),
+        _start_kafka_client(
+            "Kafka",
+            AIOKafkaProducer(
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                value_serializer=lambda value: json.dumps(value).encode("utf-8"),
+            ),
+        ),
+        _start_kafka_client(
+            "Kafka scheduler control",
+            AIOKafkaConsumer(
+                KAFKA_SCHEDULER_TOPIC,
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                group_id=KAFKA_SCHEDULER_CONSUMER_GROUP,
+                auto_offset_reset="latest",
+                value_deserializer=lambda value: json.loads(value.decode("utf-8")),
+            ),
+        ),
     )
-    kafka_producer = AIOKafkaProducer(
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        value_serializer=lambda value: json.dumps(value).encode("utf-8"),
-    )
-    await kafka_producer.start()
-    scheduler_consumer = AIOKafkaConsumer(
-        KAFKA_SCHEDULER_TOPIC,
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        group_id=KAFKA_SCHEDULER_CONSUMER_GROUP,
-        auto_offset_reset="latest",
-        value_deserializer=lambda value: json.loads(value.decode("utf-8")),
-    )
-    await scheduler_consumer.start()
     scheduler_controller = LocalSchedulerController()
     app.state.redis = redis_client
     app.state.temporal = temporal_client
@@ -69,26 +76,69 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ),
         name="local-scheduler",
     )
-    app.state.scheduler_control_consumer = asyncio.create_task(
-        consume_scheduler_controls(scheduler_consumer, scheduler_controller),
-        name="scheduler-control-consumer",
+    app.state.scheduler_control_consumer = (
+        asyncio.create_task(
+            consume_scheduler_controls(scheduler_consumer, scheduler_controller),
+            name="scheduler-control-consumer",
+        )
+        if scheduler_consumer is not None
+        else None
     )
     try:
         yield
     finally:
         await asyncio.to_thread(app.state.file_transfer.stop)
-        app.state.local_scheduler.cancel()
-        app.state.scheduler_control_consumer.cancel()
-        await asyncio.gather(
-            app.state.local_scheduler,
-            app.state.scheduler_control_consumer,
-            return_exceptions=True,
-        )
-        await scheduler_consumer.stop()
+        tasks = [app.state.local_scheduler]
+        if app.state.scheduler_control_consumer is not None:
+            tasks.append(app.state.scheduler_control_consumer)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        if scheduler_consumer is not None:
+            await scheduler_consumer.stop()
         if app.state.cache_watcher is not None:
             app.state.cache_watcher.stop()
-        await kafka_producer.stop()
+        if kafka_producer is not None:
+            await kafka_producer.stop()
         await redis_client.aclose()
+
+
+async def _connect_temporal() -> Client | None:
+    """The Temporal client, or None when Temporal is not running."""
+
+    try:
+        return await asyncio.wait_for(
+            Client.connect(TEMPORAL_ADDRESS, namespace=TEMPORAL_NAMESPACE),
+            timeout=OPTIONAL_SERVICE_TIMEOUT,
+        )
+    except Exception as exc:
+        print(
+            f"Temporal is not running at {TEMPORAL_ADDRESS} ({exc or type(exc).__name__}); "
+            "workflow APIs return 503 until it is started.",
+            flush=True,
+        )
+        return None
+
+
+async def _start_kafka_client(
+    name: str,
+    client: AIOKafkaProducer | AIOKafkaConsumer,
+) -> AIOKafkaProducer | AIOKafkaConsumer | None:
+    """Start a Kafka producer or consumer, or return None when Kafka is down."""
+
+    try:
+        await asyncio.wait_for(client.start(), timeout=OPTIONAL_SERVICE_TIMEOUT)
+        return client
+    except Exception as exc:
+        with suppress(Exception):
+            await client.stop()
+        print(
+            f"{name} is not available at {KAFKA_BOOTSTRAP_SERVERS} "
+            f"({exc or type(exc).__name__}); messaging APIs return 503 until "
+            "Kafka is started.",
+            flush=True,
+        )
+        return None
 
 
 def _create_firestore_client() -> FirestoreClient:
@@ -154,11 +204,29 @@ def get_file_transfer(request: Request) -> FileTransferService:
 
 
 def get_temporal(request: Request) -> Client:
-    return request.app.state.temporal
+    temporal = request.app.state.temporal
+    if temporal is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Temporal isn't running. {START_ALL_HINT}",
+        )
+    return temporal
+
+
+def get_optional_kafka_producer(request: Request) -> AIOKafkaProducer | None:
+    """The producer, or None when Kafka is down; for status checks."""
+
+    return request.app.state.kafka_producer
 
 
 def get_kafka_producer(request: Request) -> AIOKafkaProducer:
-    return request.app.state.kafka_producer
+    producer = get_optional_kafka_producer(request)
+    if producer is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Kafka isn't running. {START_ALL_HINT}",
+        )
+    return producer
 
 
 def get_firestore(request: Request) -> FirestoreClient:
