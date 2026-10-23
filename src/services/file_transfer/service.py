@@ -10,6 +10,7 @@ from src.services.file_transfer.config import (
     FILE_TRANSFER_HOST_NAME,
     FILE_TRANSFER_PORT,
     MAX_UPLOAD_BYTES,
+    THUMBNAIL_CACHE_DIR,
 )
 from src.services.file_transfer.files import list_folder
 from src.services.file_transfer.http_server import TransferHandler, TransferServer
@@ -27,12 +28,14 @@ class FileTransferService:
         announcer: BonjourAnnouncer | None = None,
         max_upload_bytes: int = MAX_UPLOAD_BYTES,
         load_upload_code: Callable[[], str] | None = None,
+        thumbnail_cache: Path = THUMBNAIL_CACHE_DIR,
     ) -> None:
         self.folder = folder
         self._preferred_port = port
         self._host = host
         self._announcer = announcer or BonjourAnnouncer(FILE_TRANSFER_HOST_NAME)
         self._max_upload_bytes = max_upload_bytes
+        self._thumbnail_cache = thumbnail_cache
         self._access = AccessControl(load_upload_code or _no_upload_code)
         self._server: TransferServer | None = None
         self._thread: threading.Thread | None = None
@@ -53,6 +56,7 @@ class FileTransferService:
                 server.folder = self.folder
                 server.access = self._access
                 server.max_upload_bytes = self._max_upload_bytes
+                server.thumbnail_cache = self._thumbnail_cache
                 address = lan_address()
                 if address is not None:
                     try:

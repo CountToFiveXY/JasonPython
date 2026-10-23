@@ -80,6 +80,16 @@ that does not exist returns `404`, and folders themselves cannot be uploaded.
 
 The status lists the top-level `folders` beside `files`.
 
+Images (`.jpg`, `.jpeg`, `.png`, `.heic`, `.heif`, `.gif`, `.webp`, `.tif`,
+`.tiff`, `.bmp`) show a small preview in their row. A preview is the file's
+address with `?thumbnail`, such as `/Photos/beach.jpg?thumbnail`: a JPEG at
+most 200 px on its longest side, made on first request with macOS's `sips`
+(so iPhone HEIC photos show on Android too) and cached in
+`~/Library/Caches/JasonApp/thumbnails`, outside the shared folder. A file
+that is not an image, or that `sips` cannot read, has no preview (`404`).
+With the code required, view-only pages show no previews, and a preview
+needs the code like a download.
+
 ## Access
 
 | Require code | Allow uploads | What devices can do |
@@ -133,3 +143,4 @@ could read it. That is acceptable on a home network but not on public Wi-Fi.
 | `FILE_TRANSFER_PORT` | `80`                                  |
 | `FILE_TRANSFER_HOST_NAME` | `jason.local`                    |
 | `FILE_TRANSFER_MAX_UPLOAD_GB` | `10`                         |
+| `FILE_TRANSFER_THUMBNAIL_DIR` | `~/Library/Caches/JasonApp/thumbnails` |
