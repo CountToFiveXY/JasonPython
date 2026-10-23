@@ -48,7 +48,7 @@ All three endpoints return the current status:
   "url": "http://jason.local",
   "ip_url": "http://192.168.1.23",
   "allow_uploads": true,
-  "upload_code": "482913",
+  "upload_code": "0427",
   "files": [{"name": "report.pdf", "size": 48213}]
 }
 ```
@@ -66,12 +66,23 @@ files such as `.DS_Store`, and symlinks are not listed or served.
 
 ## Uploads
 
-When `allow_uploads` is on, the page asks each device for the six-digit
-`upload_code` shown on the host Mac. A correct code sets an `HttpOnly`,
-`SameSite=Strict` cookie, so each device enters it once per sharing session.
-Turning uploads off, or stopping the share, issues a new code next time and
-signs every device out. After 10 wrong codes the code is replaced, and each
-wrong attempt waits one second.
+When `allow_uploads` is on, the page asks each device for the 4-digit upload
+code. The code is fixed and kept in Firestore, so every Mac uses the same one:
+
+| Collection | Document | Field | Type |
+|---|---|---|---|
+| `config` | `file_transfer` | `upload_code` | string, exactly 4 digits, e.g. `"0427"` |
+
+Change it by hand in the Firebase console. Store it as a **string**: a number
+field drops leading zeros, so it is refused. The code is read when uploads are
+turned on, so a new code applies the next time uploads are turned on. If the
+document is missing, the code is invalid, or Firestore credentials are not
+set, `start` with `allow_uploads: true` returns `503` with the reason and
+uploads stay off; downloads are unaffected.
+
+A correct code sets an `HttpOnly`, `SameSite=Strict` cookie, so each device
+enters it once per sharing session. Turning uploads off, or stopping the
+share, signs every device out. Each wrong attempt waits one second.
 
 Uploaded files:
 

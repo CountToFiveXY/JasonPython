@@ -24,5 +24,8 @@ MIN_FREE_BYTES = 1024**3
 
 UPLOAD_COOKIE = "jasonapp_upload"
 
-# Wrong codes allowed before the code is replaced, which bounds guessing.
-MAX_CODE_FAILURES = 10
+# The 4-digit upload code lives in Firestore so it can be changed by hand
+# in the Firebase console without touching any Mac.
+UPLOAD_CODE_COLLECTION = "config"
+UPLOAD_CODE_DOCUMENT = "file_transfer"
+UPLOAD_CODE_FIELD = "upload_code"

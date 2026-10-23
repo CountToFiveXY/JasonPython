@@ -1,6 +1,7 @@
 """Starting, stopping, and reporting on the one shared transfer server."""
 
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 from src.infrastructure.bonjour import BonjourAnnouncer, HostNameInUseError, lan_address
@@ -12,7 +13,7 @@ from src.services.file_transfer.config import (
 )
 from src.services.file_transfer.files import list_shared_files
 from src.services.file_transfer.http_server import TransferHandler, TransferServer
-from src.services.file_transfer.uploads import UploadAccess
+from src.services.file_transfer.uploads import UploadAccess, UploadCodeError
 
 
 class FileTransferService:
@@ -25,13 +26,14 @@ class FileTransferService:
         host: str = "0.0.0.0",
         announcer: BonjourAnnouncer | None = None,
         max_upload_bytes: int = MAX_UPLOAD_BYTES,
+        load_upload_code: Callable[[], str] | None = None,
     ) -> None:
         self.folder = folder
         self._preferred_port = port
         self._host = host
         self._announcer = announcer or BonjourAnnouncer(FILE_TRANSFER_HOST_NAME)
         self._max_upload_bytes = max_upload_bytes
-        self._uploads = UploadAccess()
+        self._uploads = UploadAccess(load_upload_code or _no_upload_code)
         self._server: TransferServer | None = None
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
@@ -102,3 +104,7 @@ class FileTransferService:
 
 def _url(host: str, port: int) -> str:
     return f"http://{host}" if port == 80 else f"http://{host}:{port}"
+
+
+def _no_upload_code() -> str:
+    raise UploadCodeError("No upload code is configured, so uploads cannot be turned on.")

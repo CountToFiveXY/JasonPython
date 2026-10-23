@@ -6,5 +6,11 @@ and then each device must first enter the upload code shown on the host Mac.
 
 from src.infrastructure.bonjour import HostNameInUseError
 from src.services.file_transfer.service import FileTransferService
+from src.services.file_transfer.uploads import UploadCodeError, read_upload_code
 
-__all__ = ["FileTransferService", "HostNameInUseError"]
+__all__ = [
+    "FileTransferService",
+    "HostNameInUseError",
+    "UploadCodeError",
+    "read_upload_code",
+]

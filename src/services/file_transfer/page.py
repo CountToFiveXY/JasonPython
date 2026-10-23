@@ -33,7 +33,7 @@ $upload
 
 _CODE_FORM = """<section>
 <form method="post" action="/unlock">
-<label>Upload code <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label>
+<label>Upload code <input name="code" inputmode="numeric" autocomplete="off" maxlength="4" required></label>
 <button>Unlock uploads</button>
 </form>
 $message
