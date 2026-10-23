@@ -1,4 +1,5 @@
 import http.client
+import shutil
 import tempfile
 import unittest
 import urllib.error
@@ -9,6 +10,9 @@ from src.infrastructure.bonjour import HostNameInUseError
 from src.services import FileTransferService
 from src.services.file_transfer.files import list_shared_files
 from src.services.file_transfer.access import UploadCodeError
+
+
+SAMPLE_PHOTO = Path(__file__).resolve().parent.parent / "assets" / "metroidzm_map.jpg"
 
 
 class FakeAnnouncer:
@@ -270,6 +274,45 @@ class AccessServerTests(unittest.TestCase):
         self.assertEqual(response.headers["Location"], "/Photos/Trip/")
         response, _ = self.request("POST", "/unlock", b"code=0427&next=..%2F..", headers=form)
         self.assertEqual(response.headers["Location"], "/")
+
+    def start_with_photo(self, **switches):
+        self.service.stop()
+        self.service = FileTransferService(
+            self.folder,
+            port=0,
+            host="127.0.0.1",
+            announcer=FakeAnnouncer(),
+            load_upload_code=lambda: "0427",
+            thumbnail_cache=Path(self._temp.name) / "thumbnails",
+        )
+        self.service.start(**switches)
+        (self.folder / "Photos").mkdir()
+        shutil.copy(SAMPLE_PHOTO, self.folder / "Photos" / "map.jpg")
+        (self.folder / "Photos" / "notes.txt").write_text("hi")
+
+    @unittest.skipUnless(shutil.which("sips"), "needs macOS sips")
+    def test_image_rows_show_previews(self) -> None:
+        self.start_with_photo()
+        _, page = self.request("GET", "/Photos/")
+        self.assertIn(b'<img class="thumb" src="/Photos/map.jpg?thumbnail"', page)
+        self.assertEqual(page.count(b'class="thumb"'), 1)
+        response, data = self.request("GET", "/Photos/map.jpg?thumbnail")
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.headers["Content-Type"], "image/jpeg")
+        self.assertIsNone(response.headers["Content-Disposition"])
+        self.assertLess(len(data), (self.folder / "Photos" / "map.jpg").stat().st_size)
+        response, _ = self.request("GET", "/Photos/notes.txt?thumbnail")
+        self.assertEqual(response.status, 404)
+        response, data = self.request("GET", "/Photos/map.jpg")
+        self.assertIn("attachment", response.headers["Content-Disposition"])
+
+    def test_view_only_pages_show_no_previews(self) -> None:
+        self.start_with_photo(require_code=True)
+        _, page = self.request("GET", "/Photos/")
+        self.assertIn(b"map.jpg", page)
+        self.assertNotIn(b"thumbnail", page)
+        response, _ = self.request("GET", "/Photos/map.jpg?thumbnail")
+        self.assertEqual(response.status, 401)
 
     def test_rejects_files_over_the_size_limit(self) -> None:
         self.service = FileTransferService(

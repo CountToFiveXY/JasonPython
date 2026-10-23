@@ -20,6 +20,7 @@ from src.services.file_transfer.files import (
     valid_name,
 )
 from src.services.file_transfer.page import folder_url, format_size, index_page
+from src.services.file_transfer.thumbnails import is_image, thumbnail
 from src.services.file_transfer.access import AccessControl
 
 
@@ -27,6 +28,7 @@ class TransferServer(ThreadingHTTPServer):
     daemon_threads = True
     folder: Path
     access: AccessControl
+    thumbnail_cache: Path
     max_upload_bytes: int
 
     def handle_error(self, request, client_address) -> None:  # type: ignore[override]
@@ -79,20 +81,44 @@ class TransferHandler(BaseHTTPRequestHandler):
         if file is None:
             self.send_error(404)
             return
+        if "thumbnail" in parse_qs(url.query, keep_blank_values=True):
+            preview = (
+                thumbnail(file, self.server.thumbnail_cache) if is_image(file.name) else None
+            )
+            if preview is None:
+                self.send_error(404)
+                return
+            self._send_file(preview, "image/jpeg", include_body)
+            return
+        content_type = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
+        self._send_file(file, content_type, include_body, download_name=file.name)
+
+    def _send_file(
+        self,
+        path: Path,
+        content_type: str,
+        include_body: bool,
+        download_name: str | None = None,
+    ) -> None:
+        """Send a file; with download_name, as a download rather than inline."""
+
         try:
-            handle = file.open("rb")
+            handle = path.open("rb")
         except OSError:
             self.send_error(404)
             return
         with handle:
-            content_type = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
             self.send_response(200)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(os.fstat(handle.fileno()).st_size))
-            self.send_header(
-                "Content-Disposition",
-                f"attachment; filename*=UTF-8''{quote(file.name)}",
-            )
+            if download_name is None:
+                # A preview: cache briefly; a new photo gets a new cache key.
+                self.send_header("Cache-Control", "private, max-age=300")
+            else:
+                self.send_header(
+                    "Content-Disposition",
+                    f"attachment; filename*=UTF-8''{quote(download_name)}",
+                )
             self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             if include_body:

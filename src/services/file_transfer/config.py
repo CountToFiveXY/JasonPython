@@ -24,6 +24,15 @@ MIN_FREE_BYTES = 1024**3
 
 UPLOAD_COOKIE = "jasonapp_upload"
 
+# Image previews are cached outside the shared folder, so they are never
+# listed or served as files.
+THUMBNAIL_CACHE_DIR = Path(
+    os.getenv(
+        "FILE_TRANSFER_THUMBNAIL_DIR",
+        str(Path.home() / "Library" / "Caches" / "JasonApp" / "thumbnails"),
+    )
+)
+
 # The 4-digit upload code lives in Firestore so it can be changed by hand
 # in the Firebase console without touching any Mac.
 UPLOAD_CODE_COLLECTION = "config"

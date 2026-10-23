@@ -4,6 +4,8 @@ import html
 from string import Template
 from urllib.parse import quote
 
+from src.services.file_transfer.thumbnails import is_image
+
 
 _PAGE = Template("""<!doctype html>
 <html lang="en">
@@ -14,7 +16,7 @@ _PAGE = Template("""<!doctype html>
 <style>
 body { font: 16px -apple-system, system-ui, sans-serif; margin: 0 auto; max-width: 720px; padding: 16px; }
 ul { list-style: none; padding: 0; }
-li { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #8884; }
+li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #8884; }
 a { overflow-wrap: anywhere; }
 span { color: #888; white-space: nowrap; }
 section { padding: 12px; border: 1px solid #8886; border-radius: 10px; }
@@ -22,6 +24,8 @@ input, button { font: inherit; }
 progress { width: 100%; }
 .error { color: #d33; }
 nav { color: #888; overflow-wrap: anywhere; }
+.file { display: flex; align-items: center; gap: 10px; }
+.thumb { width: 44px; height: 44px; flex: none; object-fit: cover; border-radius: 6px; background: #8882; }
 #files { display: block; max-width: 100%; }
 .actions { display: flex; justify-content: flex-end; margin-top: 12px; }
 #status:empty { display: none; }
@@ -160,9 +164,17 @@ def _heading(current: list[str]) -> str:
 
 def _file_row(current: list[str], file: dict[str, int | str], view_only: bool) -> str:
     name = html.escape(str(file["name"]))
+    # View-only shows no link and no preview: a preview is the photo itself.
     if not view_only:
         href = "/" + "/".join(quote(part) for part in current + [str(file["name"])])
-        name = f'<a href="{href}" download>{name}</a>'
+        preview = ""
+        if is_image(str(file["name"])):
+            # Loaded as the row scrolls into view; hidden if no preview can be made.
+            preview = (
+                f'<img class="thumb" src="{href}?thumbnail" alt="" loading="lazy" '
+                "onerror=\"this.style.visibility='hidden'\">"
+            )
+        name = f'<a class="file" href="{href}" download>{preview}{name}</a>'
     return f'<li>{name}<span>{format_size(int(file["size"]))}</span></li>'
 
 
