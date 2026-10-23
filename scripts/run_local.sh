@@ -2,6 +2,19 @@
 
 set -euo pipefail
 
+# --core starts only Redis and the API (FastAPI + Firestore). Temporal, Kafka
+# and their workers stay off; the APIs that need them return 503 until the
+# script runs again without --core.
+core_only=0
+case "${1:-}" in
+    "") ;;
+    --core) core_only=1 ;;
+    *)
+        echo "Usage: $0 [--core]" >&2
+        exit 2
+        ;;
+esac
+
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 venv_dir="$project_dir/.venv"
 python_bin="$venv_dir/bin/python"
@@ -81,10 +94,12 @@ install_system_dependencies() {
         exit 1
     fi
     command -v redis-server >/dev/null 2>&1 || formulas+=(redis)
-    command -v temporal >/dev/null 2>&1 || formulas+=(temporal)
-    if [[ "$kafka_bootstrap_servers" == "127.0.0.1:9092" ]] && \
-       ! command -v kafka-server-start >/dev/null 2>&1; then
-        formulas+=(kafka)
+    if (( ! core_only )); then
+        command -v temporal >/dev/null 2>&1 || formulas+=(temporal)
+        if [[ "$kafka_bootstrap_servers" == "127.0.0.1:9092" ]] && \
+           ! command -v kafka-server-start >/dev/null 2>&1; then
+            formulas+=(kafka)
+        fi
     fi
     command -v python3 >/dev/null 2>&1 || formulas+=(python)
 
@@ -228,7 +243,7 @@ rm -f "$api_port_file"
 install_system_dependencies
 require_command redis-server
 require_command redis-cli
-require_command temporal
+(( core_only )) || require_command temporal
 require_command nc
 require_command shasum
 prepare_python_environment
@@ -263,49 +278,53 @@ fi
 
 highlight "Redis snapshot: $redis_data_dir/dump.rdb"
 
-if [[ "$kafka_bootstrap_servers" == "127.0.0.1:9092" ]]; then
-    require_command kafka-topics
-    if nc -z 127.0.0.1 9092 >/dev/null 2>&1; then
-        highlight "Kafka is already running."
+if (( core_only )); then
+    highlight "Core mode: skipping Kafka, Temporal, and their workers."
+else
+    if [[ "$kafka_bootstrap_servers" == "127.0.0.1:9092" ]]; then
+        require_command kafka-topics
+        if nc -z 127.0.0.1 9092 >/dev/null 2>&1; then
+            highlight "Kafka is already running."
+        else
+            highlight "Starting Kafka..."
+            brew services start kafka
+            kafka_started=1
+            wait_for_port 127.0.0.1 9092 Kafka
+        fi
+        for kafka_topic in "$kafka_order_topic" "$kafka_scheduler_topic"; do
+            kafka-topics \
+                --bootstrap-server "$kafka_bootstrap_servers" \
+                --create \
+                --if-not-exists \
+                --topic "$kafka_topic"
+        done
     else
-        highlight "Starting Kafka..."
-        brew services start kafka
-        kafka_started=1
-        wait_for_port 127.0.0.1 9092 Kafka
+        highlight "Using external Kafka broker: $kafka_bootstrap_servers"
     fi
-    for kafka_topic in "$kafka_order_topic" "$kafka_scheduler_topic"; do
-        kafka-topics \
-            --bootstrap-server "$kafka_bootstrap_servers" \
-            --create \
-            --if-not-exists \
-            --topic "$kafka_topic"
-    done
-else
-    highlight "Using external Kafka broker: $kafka_bootstrap_servers"
+
+    if nc -z 127.0.0.1 7233 >/dev/null 2>&1; then
+        highlight "Temporal Server is already running."
+    else
+        highlight "Starting Temporal Server..."
+        temporal server start-dev &
+        temporal_pid=$!
+        wait_for_port 127.0.0.1 7233 "Temporal Server"
+    fi
+
+    highlight "Starting Temporal worker..."
+    "$python_bin" -m src.temporal.worker &
+    worker_pid=$!
+
+    highlight "Starting Kafka message worker..."
+    "$python_bin" -m src.messaging.worker &
+    kafka_worker_pid=$!
 fi
-
-if nc -z 127.0.0.1 7233 >/dev/null 2>&1; then
-    highlight "Temporal Server is already running."
-else
-    highlight "Starting Temporal Server..."
-    temporal server start-dev &
-    temporal_pid=$!
-    wait_for_port 127.0.0.1 7233 "Temporal Server"
-fi
-
-highlight "Starting Temporal worker..."
-"$python_bin" -m src.temporal.worker &
-worker_pid=$!
-
-highlight "Starting Kafka message worker..."
-"$python_bin" -m src.messaging.worker &
-kafka_worker_pid=$!
 
 highlight "Starting FastAPI at http://127.0.0.1:$api_port..."
 "$python_bin" -m uvicorn src.main:app --host 0.0.0.0 --port "$api_port" &
 api_pid=$!
 
-highlight_link "Temporal Web UI" "http://127.0.0.1:8233"
+(( core_only )) || highlight_link "Temporal Web UI" "http://127.0.0.1:8233"
 highlight_link "You can now try calling APIs in -->" "http://127.0.0.1:$api_port/docs"
 highlight "Press Control+C to stop the processes started by this script."
 wait "$api_pid"

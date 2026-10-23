@@ -13,7 +13,7 @@ class RedisUnavailableError(RuntimeError):
 
 
 class HealthService:
-    def __init__(self, redis_client: Redis, kafka_producer: AIOKafkaProducer) -> None:
+    def __init__(self, redis_client: Redis, kafka_producer: AIOKafkaProducer | None) -> None:
         self._redis_client = redis_client
         self._kafka_producer = kafka_producer
 
@@ -23,6 +23,9 @@ class HealthService:
         except RedisError as error:
             raise RedisUnavailableError("Redis is unavailable") from error
 
+        if self._kafka_producer is None:
+            # Kafka was not running when the API started.
+            return {"status": "DEGRADED", "redis": "connected", "kafka": "unavailable"}
         try:
             metadata_updated = await asyncio.wait_for(
                 self._kafka_producer.client.force_metadata_update(),

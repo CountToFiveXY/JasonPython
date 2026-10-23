@@ -12,6 +12,7 @@ from src.infrastructure.clients import (
     get_firestore,
     get_vision,
     get_kafka_producer,
+    get_optional_kafka_producer,
     get_redis,
     get_temporal,
 )
@@ -39,7 +40,7 @@ def get_file_transfer_service(
 
 def get_health_service(
     redis_client: Redis = Depends(get_redis),
-    kafka_producer: AIOKafkaProducer = Depends(get_kafka_producer),
+    kafka_producer: AIOKafkaProducer | None = Depends(get_optional_kafka_producer),
 ) -> HealthService:
     """Build a health service around shared infrastructure clients."""
 
