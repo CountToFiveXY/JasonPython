@@ -1,4 +1,4 @@
-"""The upload code devices enter, and the cookie that remembers them."""
+"""Who may download and upload: the host's two switches and the code."""
 
 import hmac
 import re
@@ -44,40 +44,49 @@ def read_upload_code(firestore: FirestoreClient) -> str:
     return code
 
 
-class UploadAccess:
-    """Whether uploads are on, and the code devices enter to unlock them.
+class AccessControl:
+    """The host's two switches, and the code that unlocks the share.
 
-    The code is read when uploads are turned on, so a code changed in
-    Firestore applies the next time they are. A device that enters it gets a
-    cookie holding a random token, so it is asked only once per sharing
-    session; turning uploads off signs every device out.
+    With the code off, anyone on the network can download, and upload too
+    when uploads are allowed. With it on, devices only see the file list
+    until they enter the code; then they can download, and upload when
+    allowed. The code is read from Firestore when the switch is turned on, so
+    a changed code applies the next time it is. A device that enters it gets
+    a cookie for the rest of the session; turning the switch off signs every
+    device out.
     """
 
     def __init__(self, load_code: Callable[[], str]) -> None:
         self._load_code = load_code
         self._lock = threading.Lock()
-        self.enabled = False
+        self.uploads_enabled = False
+        self.code_required = False
         self.code = ""
         self.token = ""
 
-    def set_enabled(self, enabled: bool) -> None:
+    def configure(self, allow_uploads: bool, require_code: bool) -> None:
         with self._lock:
-            if enabled and not self.enabled:
-                # Raises UploadCodeError, leaving uploads off, when no code is set.
+            if require_code and not self.code_required:
+                # Raises UploadCodeError, changing nothing, when no code is set.
                 self.code = self._load_code()
                 self.token = secrets.token_urlsafe(32)
-            elif not enabled:
+            elif not require_code:
                 self.code = self.token = ""
-            self.enabled = enabled
+            self.code_required = require_code
+            self.uploads_enabled = allow_uploads
 
     def unlock(self, code: str) -> str | None:
         """The session token for a correct code; None otherwise."""
 
         with self._lock:
-            if self.enabled and hmac.compare_digest(code.strip(), self.code):
+            if self.code_required and hmac.compare_digest(code.strip(), self.code):
                 return self.token
             return None
 
-    def allows(self, token: str | None) -> bool:
+    def unlocked(self, token: str | None) -> bool:
+        """Whether a device may download, and upload when uploads are on."""
+
         with self._lock:
-            return self.enabled and bool(token) and hmac.compare_digest(token, self.token)
+            if not self.code_required:
+                return True
+            return bool(token) and hmac.compare_digest(token, self.token)

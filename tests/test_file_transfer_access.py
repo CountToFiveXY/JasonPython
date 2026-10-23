@@ -1,8 +1,8 @@
 import unittest
 from types import SimpleNamespace
 
-from src.services.file_transfer.uploads import (
-    UploadAccess,
+from src.services.file_transfer.access import (
+    AccessControl,
     UploadCodeError,
     read_upload_code,
 )
@@ -44,45 +44,56 @@ class ReadUploadCodeTests(unittest.TestCase):
         self.assertIn("offline", str(error.exception))
 
 
-class UploadAccessTests(unittest.TestCase):
-    def test_off_until_enabled(self) -> None:
-        access = UploadAccess(lambda: "0427")
-        self.assertFalse(access.enabled)
+class AccessControlTests(unittest.TestCase):
+    def test_open_by_default(self) -> None:
+        access = AccessControl(lambda: "0427")
+        self.assertFalse(access.uploads_enabled)
+        self.assertFalse(access.code_required)
+        self.assertTrue(access.unlocked(None))
         self.assertIsNone(access.unlock("0427"))
 
-    def test_correct_code_returns_a_session_token(self) -> None:
-        access = UploadAccess(lambda: "0427")
-        access.set_enabled(True)
+    def test_required_code_returns_a_session_token(self) -> None:
+        access = AccessControl(lambda: "0427")
+        access.configure(allow_uploads=False, require_code=True)
         self.assertEqual(access.code, "0427")
+        self.assertFalse(access.unlocked(None))
         self.assertIsNone(access.unlock("1111"))
         token = access.unlock(" 0427 ")
-        self.assertTrue(access.allows(token))
-        self.assertFalse(access.allows("forged"))
-        self.assertFalse(access.allows(None))
+        self.assertTrue(access.unlocked(token))
+        self.assertFalse(access.unlocked("forged"))
 
-    def test_missing_code_leaves_uploads_off(self) -> None:
+    def test_uploads_switch_does_not_touch_the_code(self) -> None:
+        access = AccessControl(lambda: "0427")
+        access.configure(allow_uploads=False, require_code=True)
+        token = access.unlock("0427")
+        access.configure(allow_uploads=True, require_code=True)
+        self.assertTrue(access.uploads_enabled)
+        self.assertTrue(access.unlocked(token))
+
+    def test_missing_code_changes_nothing(self) -> None:
         def no_code() -> str:
             raise UploadCodeError("not set")
 
-        access = UploadAccess(no_code)
+        access = AccessControl(no_code)
+        access.configure(allow_uploads=True, require_code=False)
         with self.assertRaises(UploadCodeError):
-            access.set_enabled(True)
-        self.assertFalse(access.enabled)
+            access.configure(allow_uploads=False, require_code=True)
+        self.assertTrue(access.uploads_enabled)
+        self.assertFalse(access.code_required)
         self.assertEqual(access.code, "")
 
-    def test_code_changes_apply_when_uploads_are_turned_on_again(self) -> None:
+    def test_code_changes_apply_when_the_code_is_required_again(self) -> None:
         codes = iter(["0427", "9051"])
-        access = UploadAccess(lambda: next(codes))
-        access.set_enabled(True)
+        access = AccessControl(lambda: next(codes))
+        access.configure(False, True)
         token = access.unlock("0427")
-        access.set_enabled(True)
+        access.configure(False, True)
         self.assertEqual(access.code, "0427")
-        access.set_enabled(False)
-        self.assertFalse(access.allows(token))
-        access.set_enabled(True)
+        access.configure(False, False)
+        self.assertTrue(access.unlocked(None))
+        access.configure(False, True)
         self.assertEqual(access.code, "9051")
-        self.assertFalse(access.allows(token))
-
+        self.assertFalse(access.unlocked(token))
 
 if __name__ == "__main__":
     unittest.main()

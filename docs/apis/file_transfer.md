@@ -1,9 +1,10 @@
 # File Transfer API
 
 Shares `~/Documents/JasonApp/FileTransfer` with every device on the same LAN as
-a web page. Devices can always download; uploading is off unless the host turns
-it on. The API starts and stops a separate download server;
-other devices open the returned `url` in a browser.
+a web page. Two switches control what devices can do, both off by default:
+**allow uploads** and **require code** (see [Access](#access)). The API starts
+and stops a separate transfer server; other devices open the returned `url` in
+a browser.
 
 The sharing Mac announces **`jason.local`** through Bonjour, so every device
 uses `http://jason.local` no matter which Mac is hosting. Only one Mac can own
@@ -28,12 +29,12 @@ POST /v1/file-transfer/stop
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/file-transfer/start
 curl -X POST http://127.0.0.1:8000/v1/file-transfer/start \
-  -H 'Content-Type: application/json' -d '{"allow_uploads": true}'
+  -H 'Content-Type: application/json' -d '{"allow_uploads": true, "require_code": true}'
 ```
 
-`start` takes an optional body. `allow_uploads` defaults to `false`; calling
-`start` again while sharing turns uploads on or off without restarting the
-share.
+`start` takes an optional body with `allow_uploads` and `require_code`, both
+`false` when left out. Calling `start` again while sharing changes the
+switches without restarting the share, so send both every time.
 
 ## Response
 
@@ -48,7 +49,8 @@ All three endpoints return the current status:
   "url": "http://jason.local",
   "ip_url": "http://192.168.1.23",
   "allow_uploads": true,
-  "upload_code": "0427",
+  "require_code": true,
+  "access_code": "0427",
   "files": [{"name": "report.pdf", "size": 48213}]
 }
 ```
@@ -64,25 +66,37 @@ a free port (added to the URLs) when that one is busy.
 Only visible, regular files directly inside the folder. Subfolders, hidden
 files such as `.DS_Store`, and symlinks are not listed or served.
 
-## Uploads
+## Access
 
-When `allow_uploads` is on, the page asks each device for the 4-digit upload
-code. The code is fixed and kept in Firestore, so every Mac uses the same one:
+| Require code | Allow uploads | What devices can do |
+|---|---|---|
+| off | off | download (the default) |
+| off | on | download and upload |
+| on | off | see the file list; download after entering the code |
+| on | on | see the file list; download and upload after entering the code |
+
+With the code required, the page lists file names and sizes without links
+and asks for the code; downloading a file without it returns `401`.
+
+The code is fixed and kept in Firestore, so every Mac uses the same one:
 
 | Collection | Document | Field | Type |
 |---|---|---|---|
 | `config` | `file_transfer` | `upload_code` | string, exactly 4 digits, e.g. `"0427"` |
 
 Change it by hand in the Firebase console. Store it as a **string**: a number
-field drops leading zeros, so it is refused. The code is read when uploads are
-turned on, so a new code applies the next time uploads are turned on. If the
+field drops leading zeros, so it is refused. The code is read when
+`require_code` is turned on, so a new code applies the next time it is. If the
 document is missing, the code is invalid, or Firestore credentials are not
-set, `start` with `allow_uploads: true` returns `503` with the reason and
-uploads stay off; downloads are unaffected.
+set, `start` with `require_code: true` returns `503` with the reason and
+nothing changes. `access_code` in the status is that code while it is
+required.
 
 A correct code sets an `HttpOnly`, `SameSite=Strict` cookie, so each device
-enters it once per sharing session. Turning uploads off, or stopping the
-share, signs every device out. Each wrong attempt waits one second.
+enters it once per sharing session. Turning `require_code` off, or stopping
+the share, signs every device out. Each wrong attempt waits one second.
+
+## Uploads
 
 Uploaded files:
 
@@ -92,7 +106,7 @@ Uploaded files:
   leaves nothing behind
 - can be up to 10 GB, and are refused when the Mac would have under 1 GB free
 
-The upload code travels over plain HTTP, so anyone watching the Wi-Fi traffic
+The code travels over plain HTTP, so anyone watching the Wi-Fi traffic
 could read it. That is acceptable on a home network but not on public Wi-Fi.
 
 ## Configuration

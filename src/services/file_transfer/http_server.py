@@ -1,4 +1,4 @@
-"""The HTTP server devices talk to: downloads, unlocking uploads, uploads."""
+"""The HTTP server devices talk to: the file list, downloads, the code, uploads."""
 
 import json
 import mimetypes
@@ -18,13 +18,13 @@ from src.services.file_transfer.files import (
     valid_name,
 )
 from src.services.file_transfer.page import format_size, index_page
-from src.services.file_transfer.uploads import UploadAccess
+from src.services.file_transfer.access import AccessControl
 
 
 class TransferServer(ThreadingHTTPServer):
     daemon_threads = True
     folder: Path
-    uploads: UploadAccess
+    access: AccessControl
     max_upload_bytes: int
 
     def handle_error(self, request, client_address) -> None:  # type: ignore[override]
@@ -58,11 +58,12 @@ class TransferHandler(BaseHTTPRequestHandler):
         url = urlsplit(self.path)
         path = unquote(url.path)
         if path == "/":
-            uploads = self.server.uploads
+            access = self.server.access
             body = index_page(
                 list_shared_files(folder),
-                uploads_enabled=uploads.enabled,
-                unlocked=uploads.allows(self._upload_token()),
+                uploads_enabled=access.uploads_enabled,
+                code_required=access.code_required,
+                unlocked=access.unlocked(self._session_token()),
                 wrong_code="wrong" in parse_qs(url.query, keep_blank_values=True),
             ).encode("utf-8")
             self.send_response(200)
@@ -74,6 +75,10 @@ class TransferHandler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
             return
 
+        if not self.server.access.unlocked(self._session_token()):
+            # The code is required: the list is view-only until it is entered.
+            self.send_error(401, "Enter the code on the File Transfer page first.")
+            return
         file = shared_file(folder, path.removeprefix("/"))
         if file is None:
             self.send_error(404)
@@ -103,7 +108,7 @@ class TransferHandler(BaseHTTPRequestHandler):
             self._reject(400, "Send the upload code.")
             return
         form = parse_qs(self.rfile.read(length).decode("utf-8", "replace"))
-        token = self.server.uploads.unlock(form.get("code", [""])[0])
+        token = self.server.access.unlock(form.get("code", [""])[0])
         if token is None:
             # Slow down guessing; the code is also replaced after repeated misses.
             time.sleep(1)
@@ -119,12 +124,12 @@ class TransferHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _upload(self) -> None:
-        uploads = self.server.uploads
-        if not uploads.enabled:
+        access = self.server.access
+        if not access.uploads_enabled:
             self._reject(403, "Uploads are turned off on the sharing Mac.")
             return
-        if not uploads.allows(self._upload_token()):
-            self._reject(401, "Enter the upload code first.")
+        if not access.unlocked(self._session_token()):
+            self._reject(401, "Enter the code first.")
             return
         name = parse_qs(urlsplit(self.path).query).get("name", [""])[0]
         if not valid_name(name):
@@ -153,7 +158,7 @@ class TransferHandler(BaseHTTPRequestHandler):
         self.log_message("uploaded %s (%d bytes)", saved, length)
         self._send_json(201, {"name": saved})
 
-    def _upload_token(self) -> str | None:
+    def _session_token(self) -> str | None:
         cookie = SimpleCookie()
         try:
             cookie.load(self.headers.get("Cookie", ""))

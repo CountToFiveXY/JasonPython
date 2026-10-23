@@ -4,13 +4,9 @@ Follow this guide from the project root when setting up the application for the
 first time. The local environment includes Redis, Kafka, a Kafka message worker,
 Temporal Server, a Temporal worker, and FastAPI.
 
-The order API also requires credentials for the `jasonapp-xm0830` Firebase
-project. Before starting locally, set `GOOGLE_APPLICATION_CREDENTIALS` to the
-absolute path of a service-account JSON file stored outside this repository:
-
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS="/absolute/path/to/service-account.json"
-```
+The backend reads Firestore and calls Cloud Vision in the `jasonapp-xm0830`
+Google Cloud project, so **each laptop needs its own service account**. See
+[step 3](#3-create-this-laptops-google-cloud-service-account).
 
 ## First-time setup
 
@@ -35,6 +31,33 @@ brew --version
 ```
 
 If Homebrew is not installed, get it from <https://brew.sh>.
+
+### 3. Create this laptop's Google Cloud service account
+
+Each laptop gets its own service account, created by hand in the
+[Google Cloud console](https://console.cloud.google.com/) for project
+`jasonapp-xm0830`:
+
+1. **IAM & Admin** → **Service Accounts** → **Create service account**
+2. **Service account name**: `jasonapp-<laptop>`, e.g. `jasonapp-yuqiao-mbp` →
+   **Create and continue**
+3. **Grant this service account access to project** → add these roles →
+   **Continue** → **Done**
+   - **Cloud Datastore User** (Firestore)
+   - **Service Usage Consumer** (Cloud Vision)
+4. Open the new account → **Keys** → **Add key** → **Create new key** →
+   **JSON** → **Create**
+
+Move the downloaded key to where `scripts/run_local.sh` looks for it:
+
+```bash
+mkdir -p ~/.config/jasonapp
+mv ~/Downloads/jasonapp-xm0830-*.json ~/.config/jasonapp/service-account.json
+chmod 600 ~/.config/jasonapp/service-account.json
+```
+
+Never commit the key or copy it to another laptop. To retire a laptop, delete
+its service account in the same page.
 
 ## Start only the core services
 
@@ -180,8 +203,11 @@ address, and task-queue configuration.
   configured broker address is incorrect.
 - A workflow request waits indefinitely: the Temporal worker is not running or
   its namespace or task queue does not match FastAPI.
-- `DefaultCredentialsError`: set `GOOGLE_APPLICATION_CREDENTIALS` to a valid
-  service-account JSON file for the Firebase project.
+- `DefaultCredentialsError`: this laptop has no service-account key. Follow
+  [step 3](#3-create-this-laptops-google-cloud-service-account), or set
+  `GOOGLE_APPLICATION_CREDENTIALS` to the absolute path of this laptop's key.
+- `403 Permission denied` from Firestore or Cloud Vision: the laptop's account
+  is missing one of the two roles in step 3.
 
 ## Access from another device
 

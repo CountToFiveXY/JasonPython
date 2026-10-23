@@ -13,7 +13,7 @@ from src.services.file_transfer.config import (
 )
 from src.services.file_transfer.files import list_shared_files
 from src.services.file_transfer.http_server import TransferHandler, TransferServer
-from src.services.file_transfer.uploads import UploadAccess, UploadCodeError
+from src.services.file_transfer.access import AccessControl, UploadCodeError
 
 
 class FileTransferService:
@@ -33,16 +33,16 @@ class FileTransferService:
         self._host = host
         self._announcer = announcer or BonjourAnnouncer(FILE_TRANSFER_HOST_NAME)
         self._max_upload_bytes = max_upload_bytes
-        self._uploads = UploadAccess(load_upload_code or _no_upload_code)
+        self._access = AccessControl(load_upload_code or _no_upload_code)
         self._server: TransferServer | None = None
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
 
-    def start(self, allow_uploads: bool = False) -> dict:
-        """Start sharing, or change whether uploads are allowed while sharing."""
+    def start(self, allow_uploads: bool = False, require_code: bool = False) -> dict:
+        """Start sharing, or change the upload and code switches while sharing."""
 
         with self._lock:
-            self._uploads.set_enabled(allow_uploads)
+            self._access.configure(allow_uploads, require_code)
             if self._server is None:
                 self.folder.mkdir(parents=True, exist_ok=True)
                 try:
@@ -51,7 +51,7 @@ class FileTransferService:
                     # The preferred port is taken; let the system pick a free one.
                     server = TransferServer((self._host, 0), TransferHandler)
                 server.folder = self.folder
-                server.uploads = self._uploads
+                server.access = self._access
                 server.max_upload_bytes = self._max_upload_bytes
                 address = lan_address()
                 if address is not None:
@@ -59,7 +59,7 @@ class FileTransferService:
                         self._announcer.claim(address, server.server_address[1])
                     except HostNameInUseError:
                         server.server_close()
-                        self._uploads.set_enabled(False)
+                        self._access.configure(False, False)
                         raise
                 thread = threading.Thread(
                     target=server.serve_forever,
@@ -75,7 +75,7 @@ class FileTransferService:
             server, thread = self._server, self._thread
             self._server, self._thread = None, None
             self._announcer.release()
-            self._uploads.set_enabled(False)
+            self._access.configure(False, False)
             if server is not None:
                 server.shutdown()
                 server.server_close()
@@ -96,8 +96,9 @@ class FileTransferService:
             "host_name": host_name,
             "url": _url(host_name, port) if host_name and port else ip_url,
             "ip_url": ip_url,
-            "allow_uploads": self._uploads.enabled,
-            "upload_code": self._uploads.code or None,
+            "allow_uploads": self._access.uploads_enabled,
+            "require_code": self._access.code_required,
+            "access_code": self._access.code or None,
             "files": list_shared_files(self.folder),
         }
 
@@ -107,4 +108,4 @@ def _url(host: str, port: int) -> str:
 
 
 def _no_upload_code() -> str:
-    raise UploadCodeError("No upload code is configured, so uploads cannot be turned on.")
+    raise UploadCodeError("No code is configured, so Require code cannot be turned on.")
