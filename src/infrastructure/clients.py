@@ -20,6 +20,7 @@ from src.infrastructure.scheduler import (
     consume_scheduler_controls,
     run_local_scheduler,
 )
+from src.services.file_transfer import FileTransferService
 from src.messaging.config import (
     KAFKA_BOOTSTRAP_SERVERS,
     KAFKA_SCHEDULER_CONSUMER_GROUP,
@@ -59,6 +60,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.kafka_producer = kafka_producer
     app.state.cache_watcher = _start_cache_watcher(app, redis_client)
     app.state.scheduler_controller = scheduler_controller
+    app.state.file_transfer = FileTransferService()
     app.state.local_scheduler = asyncio.create_task(
         run_local_scheduler(
             is_enabled=scheduler_controller.is_enabled,
@@ -72,6 +74,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        await asyncio.to_thread(app.state.file_transfer.stop)
         app.state.local_scheduler.cancel()
         app.state.scheduler_control_consumer.cancel()
         await asyncio.gather(
@@ -128,6 +131,10 @@ def _start_cache_watcher(
 
 def get_redis(request: Request) -> Redis:
     return request.app.state.redis
+
+
+def get_file_transfer(request: Request) -> FileTransferService:
+    return request.app.state.file_transfer
 
 
 def get_temporal(request: Request) -> Client:

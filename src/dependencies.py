@@ -8,6 +8,7 @@ from redis.asyncio import Redis
 from temporalio.client import Client as TemporalClient
 
 from src.infrastructure.clients import (
+    get_file_transfer,
     get_firestore,
     get_vision,
     get_kafka_producer,
@@ -15,6 +16,7 @@ from src.infrastructure.clients import (
     get_temporal,
 )
 from src.services import (
+    FileTransferService,
     HealthService,
     LeaderboardService,
     HelloService,
@@ -25,6 +27,14 @@ from src.services import (
     TextRecognitionService,
     UrlShorteningService,
 )
+
+
+def get_file_transfer_service(
+    service: FileTransferService = Depends(get_file_transfer),
+) -> FileTransferService:
+    """The one LAN file server owned by this API process."""
+
+    return service
 
 
 def get_health_service(

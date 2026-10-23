@@ -1,5 +1,6 @@
 """HTTP request and response schemas."""
 
+from src.schemas.file_transfer import FileTransferStatus, SharedFile
 from src.schemas.health import HealthResponse
 from src.schemas.hello import WorkflowResponse
 from src.schemas.gauntlet import (
@@ -44,6 +45,7 @@ __all__ = [
     "CarListResponse",
     "CarPath",
     "CarSummaryResponse",
+    "FileTransferStatus",
     "HealthResponse",
     "Leaderboard",
     "LeaderboardContext",
@@ -64,6 +66,7 @@ __all__ = [
     "ShortenRequest",
     "ShortenResponse",
     "ShortKey",
+    "SharedFile",
     "TextLineResponse",
     "TextRecognitionResponse",
     "MapTrackGauntletResponse",

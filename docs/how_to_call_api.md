@@ -13,6 +13,7 @@ Each endpoint has its own guide:
 - [Text recognition API](apis/text_recognition.md)
 - [Health check API](apis/health.md)
 - [Hello workflow API](apis/hello.md)
+- [File transfer API](apis/file_transfer.md)
 
 Interactive documentation for all endpoints is available at
 <http://127.0.0.1:8000/docs>.
