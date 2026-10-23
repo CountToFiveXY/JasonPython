@@ -12,5 +12,7 @@ class FileTransferStatus(BaseModel):
     running: bool
     folder: str
     port: int | None
+    host_name: str | None
     url: str | None
+    ip_url: str | None
     files: list[SharedFile]

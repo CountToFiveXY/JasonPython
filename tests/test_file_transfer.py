@@ -1,5 +1,8 @@
 import os
+import shutil
 import tempfile
+import time
+import uuid
 import unittest
 import urllib.error
 import urllib.request
@@ -10,7 +13,30 @@ from fastapi import HTTPException
 
 from src.routers.file_transfer import require_local_client
 from src.services import FileTransferService
-from src.services.file_transfer import list_shared_files, shared_file
+from src.services.file_transfer import (
+    BonjourAnnouncer,
+    HostNameInUseError,
+    list_shared_files,
+    shared_file,
+)
+
+
+class FakeAnnouncer:
+    host_name = "jason.local"
+
+    def __init__(self, in_use: bool = False) -> None:
+        self.in_use = in_use
+        self.is_active = False
+        self.claimed_port: int | None = None
+
+    def claim(self, address: str, port: int) -> bool:
+        if self.in_use:
+            raise HostNameInUseError(self.host_name, "192.168.88.20")
+        self.is_active, self.claimed_port = True, port
+        return True
+
+    def release(self) -> None:
+        self.is_active = False
 
 
 class SharedFileTests(unittest.TestCase):
@@ -44,7 +70,10 @@ class FileTransferServerTests(unittest.TestCase):
     def setUp(self) -> None:
         self._temp = tempfile.TemporaryDirectory()
         self.folder = Path(self._temp.name) / "FileTransfer"
-        self.service = FileTransferService(self.folder, port=0, host="127.0.0.1")
+        self.announcer = FakeAnnouncer()
+        self.service = FileTransferService(
+            self.folder, port=0, host="127.0.0.1", announcer=self.announcer
+        )
 
     def tearDown(self) -> None:
         self.service.stop()
@@ -78,9 +107,47 @@ class FileTransferServerTests(unittest.TestCase):
         with self.assertRaises(urllib.error.URLError):
             urllib.request.urlopen(f"{base}/", timeout=2)
 
+    def test_announces_the_shared_name_while_running(self) -> None:
+        status = self.service.start()
+        self.assertEqual(self.announcer.claimed_port, status["port"])
+        self.assertEqual(status["host_name"], "jason.local")
+        self.assertEqual(status["url"], f"http://jason.local:{status['port']}")
+
+        status = self.service.stop()
+        self.assertFalse(self.announcer.is_active)
+        self.assertIsNone(status["host_name"])
+        self.assertIsNone(status["url"])
+
+    def test_refuses_to_start_when_another_mac_owns_the_name(self) -> None:
+        self.announcer.in_use = True
+        with self.assertRaises(HostNameInUseError) as error:
+            self.service.start()
+        self.assertIn("192.168.88.20", str(error.exception))
+        self.assertFalse(self.service.status()["running"])
+
     def test_start_is_idempotent(self) -> None:
         first = self.service.start()
         self.assertEqual(self.service.start()["port"], first["port"])
+
+
+@unittest.skipUnless(shutil.which("dns-sd"), "needs macOS Bonjour")
+class BonjourAnnouncerTests(unittest.TestCase):
+    def test_second_claim_on_the_same_name_is_refused(self) -> None:
+        name = f"jasonapp-test-{uuid.uuid4().hex[:8]}.local"
+        first, second = BonjourAnnouncer(name), BonjourAnnouncer(name)
+        try:
+            self.assertTrue(first.claim("192.0.2.10", 80))
+            self.assertTrue(first.is_active)
+            # Bonjour on one Mac can miss a clash started the same instant
+            # the first name goes live; a person pressing Start is never that fast.
+            time.sleep(1)
+            with self.assertRaises(HostNameInUseError):
+                second.claim("192.0.2.11", 80)
+            self.assertFalse(second.is_active)
+        finally:
+            first.release()
+            second.release()
+        self.assertFalse(first.is_active)
 
 
 class LocalClientTests(unittest.TestCase):

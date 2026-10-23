@@ -3,9 +3,12 @@
 import html
 import mimetypes
 import os
+import selectors
 import shutil
 import socket
+import subprocess
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit
@@ -16,7 +19,23 @@ FILE_TRANSFER_DIR = Path(
         str(Path.home() / "Documents" / "JasonApp" / "FileTransfer"),
     )
 )
-FILE_TRANSFER_PORT = int(os.getenv("FILE_TRANSFER_PORT", "8765"))
+# Port 80 keeps the port out of the address devices type.
+FILE_TRANSFER_PORT = int(os.getenv("FILE_TRANSFER_PORT", "80"))
+# Whichever Mac is sharing announces this name, so every device can use
+# the same address no matter which Mac hosts.
+FILE_TRANSFER_HOST_NAME = os.getenv("FILE_TRANSFER_HOST_NAME", "jason.local")
+
+
+class HostNameInUseError(RuntimeError):
+    """Another device on the network is already sharing under the name."""
+
+    def __init__(self, host_name: str, owner: str | None) -> None:
+        self.host_name = host_name
+        self.owner = owner
+        where = f" from {owner}" if owner else " from another device"
+        super().__init__(
+            f"{host_name} is already being shared{where}. Stop sharing there first."
+        )
 
 
 def list_shared_files(folder: Path) -> list[dict[str, int | str]]:
@@ -51,8 +70,32 @@ def shared_file(folder: Path, name: str) -> Path | None:
 
 
 def lan_address() -> str | None:
-    """The IPv4 address other devices on the LAN use to reach this computer."""
+    """The IPv4 address other devices on the LAN use to reach this computer.
 
+    Prefers the Wi-Fi or Ethernet interface (en*, bridge*) so a VPN tunnel,
+    which other devices cannot reach, is never chosen.
+    """
+
+    for _, name in sorted(socket.if_nameindex(), key=lambda interface: interface[1]):
+        if not name.startswith(("en", "bridge")):
+            continue
+        try:
+            result = subprocess.run(
+                ["ipconfig", "getifaddr", name],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            break
+        address = result.stdout.strip()
+        # 169.254.x.x is a self-assigned address with no working network.
+        if address and not address.startswith("169.254."):
+            return address
+    return _default_route_address()
+
+
+def _default_route_address() -> str | None:
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
         try:
             # Connecting a UDP socket only picks the outgoing interface;
@@ -160,6 +203,89 @@ class _DownloadHandler(BaseHTTPRequestHandler):
                 shutil.copyfileobj(handle, self.wfile, 1024 * 1024)
 
 
+class BonjourAnnouncer:
+    """Announces a .local name for this Mac through macOS's own Bonjour service.
+
+    Bonjour lets only one device own a name, so a second Mac that tries to
+    share is refused instead of silently taking over the address.
+    """
+
+    def __init__(self, host_name: str = FILE_TRANSFER_HOST_NAME, timeout: float = 5) -> None:
+        self.host_name = host_name
+        self._timeout = timeout
+        self._process: subprocess.Popen[bytes] | None = None
+
+    @property
+    def is_active(self) -> bool:
+        return self._process is not None and self._process.poll() is None
+
+    def claim(self, address: str, port: int) -> bool:
+        """Announce the name; False when Bonjour is unavailable on this system."""
+
+        self.release()
+        try:
+            process = subprocess.Popen(
+                [
+                    "dns-sd", "-P", "JasonApp Files", "_http._tcp", "local",
+                    str(port), self.host_name, address,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+        except OSError:
+            return False
+        assert process.stdout is not None
+        record = f"record {self.host_name}:"
+        output = ""
+        in_use = False
+        deadline = time.monotonic() + self._timeout
+        with selectors.DefaultSelector() as selector:
+            # Read the raw pipe: a buffered readline() can hold the reply in
+            # Python's buffer while select() waits for data that already came.
+            selector.register(process.stdout, selectors.EVENT_READ)
+            while (remaining := deadline - time.monotonic()) > 0:
+                if not selector.select(remaining):
+                    continue
+                chunk = os.read(process.stdout.fileno(), 4096)
+                if not chunk:
+                    break
+                output += chunk.decode("utf-8", "replace")
+                replies = [line for line in output.splitlines() if record in line]
+                if any("Name now registered" in line for line in replies):
+                    self._process = process
+                    # Keep draining output so dns-sd never blocks on a full pipe.
+                    threading.Thread(
+                        target=process.stdout.read,
+                        name="file-transfer-bonjour",
+                        daemon=True,
+                    ).start()
+                    return True
+                if any("Name in use" in line for line in replies):
+                    in_use = True
+                    break
+        process.kill()
+        process.wait()
+        if in_use:
+            raise HostNameInUseError(self.host_name, self._current_owner())
+        # Bonjour did not answer in time; devices can still use the IP address.
+        return False
+
+    def release(self) -> None:
+        process, self._process = self._process, None
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+
+    def _current_owner(self) -> str | None:
+        try:
+            return socket.gethostbyname(self.host_name)
+        except OSError:
+            return None
+
+
 class FileTransferService:
     """Starts and stops one download server shared by every API request."""
 
@@ -168,10 +294,12 @@ class FileTransferService:
         folder: Path = FILE_TRANSFER_DIR,
         port: int = FILE_TRANSFER_PORT,
         host: str = "0.0.0.0",
+        announcer: BonjourAnnouncer | None = None,
     ) -> None:
         self.folder = folder
         self._preferred_port = port
         self._host = host
+        self._announcer = announcer or BonjourAnnouncer()
         self._server: _DownloadServer | None = None
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
@@ -186,6 +314,13 @@ class FileTransferService:
                     # The preferred port is taken; let the system pick a free one.
                     server = _DownloadServer((self._host, 0), _DownloadHandler)
                 server.folder = self.folder
+                address = lan_address()
+                if address is not None:
+                    try:
+                        self._announcer.claim(address, server.server_address[1])
+                    except HostNameInUseError:
+                        server.server_close()
+                        raise
                 thread = threading.Thread(
                     target=server.serve_forever,
                     name="file-transfer",
@@ -199,6 +334,7 @@ class FileTransferService:
         with self._lock:
             server, thread = self._server, self._thread
             self._server, self._thread = None, None
+            self._announcer.release()
             if server is not None:
                 server.shutdown()
                 server.server_close()
@@ -210,10 +346,18 @@ class FileTransferService:
         server = self._server
         port = server.server_address[1] if server is not None else None
         address = lan_address() if server is not None else None
+        ip_url = _url(address, port) if address and port else None
+        host_name = self._announcer.host_name if port and self._announcer.is_active else None
         return {
             "running": server is not None,
             "folder": str(self.folder),
             "port": port,
-            "url": f"http://{address}:{port}" if address and port else None,
+            "host_name": host_name,
+            "url": _url(host_name, port) if host_name and port else ip_url,
+            "ip_url": ip_url,
             "files": list_shared_files(self.folder),
         }
+
+
+def _url(host: str, port: int) -> str:
+    return f"http://{host}" if port == 80 else f"http://{host}:{port}"
