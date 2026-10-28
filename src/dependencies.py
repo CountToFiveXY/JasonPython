@@ -16,6 +16,8 @@ from src.infrastructure.clients import (
     get_redis,
     get_temporal,
 )
+from src.repositories.ledger import LedgerRepository
+from src.services.ledger import LedgerService
 from src.services import (
     FileTransferService,
     HealthService,
@@ -106,3 +108,11 @@ def get_url_shortening_service(
     """Build a URL-shortening service around the shared Redis client."""
 
     return UrlShorteningService(redis_client)
+
+
+def get_ledger_service(
+    firestore_client: FirestoreClient = Depends(get_firestore),
+) -> LedgerService:
+    """Build the personal ledger around the shared Firestore client."""
+
+    return LedgerService(LedgerRepository(firestore_client))

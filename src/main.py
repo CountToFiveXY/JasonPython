@@ -4,6 +4,7 @@ from src.infrastructure.clients import lifespan
 from src.routers import (
     file_transfer,
     leaderboard,
+    ledger,
     health,
     hello,
     image,
@@ -27,3 +28,4 @@ app.include_router(messages.router)
 app.include_router(gauntlet.router)
 app.include_router(text_recognition.router)
 app.include_router(file_transfer.router)
+app.include_router(ledger.router)
