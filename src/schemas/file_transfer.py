@@ -9,7 +9,7 @@ class SharedFile(BaseModel):
 
 
 class FileTransferStartRequest(BaseModel):
-    allow_uploads: bool = False
+    allow_uploads: bool = True
     require_code: bool = False
 
 

@@ -137,17 +137,21 @@ class AccessServerTests(unittest.TestCase):
     def cookie_for(self, code="0427"):
         return self.unlock(code).headers["Set-Cookie"].split(";")[0]
 
-    def test_defaults_are_open_downloads_and_no_uploads(self) -> None:
+    def test_defaults_allow_downloads_and_uploads_without_a_code(self) -> None:
         status = self.service.start()
-        self.assertFalse(status["allow_uploads"])
+        self.assertTrue(status["allow_uploads"])
         self.assertFalse(status["require_code"])
         self.assertIsNone(status["access_code"])
         (self.folder / "notes.txt").write_text("hi")
         response, data = self.request("GET", "/notes.txt")
         self.assertEqual((response.status, data), (200, b"hi"))
         response, _ = self.request("POST", "/upload?name=a.txt", b"hi")
+        self.assertEqual(response.status, 201)
+        self.assertEqual((self.folder / "a.txt").read_bytes(), b"hi")
+        self.service.start(allow_uploads=False)
+        response, _ = self.request("POST", "/upload?name=blocked.txt", b"hi")
         self.assertEqual(response.status, 403)
-        self.assertEqual(list_shared_files(self.folder), [{"name": "notes.txt", "size": 2}])
+        self.assertFalse((self.folder / "blocked.txt").exists())
 
     def test_uploads_without_the_code_need_no_unlock(self) -> None:
         self.service.start(allow_uploads=True)
@@ -161,7 +165,7 @@ class AccessServerTests(unittest.TestCase):
         self.assertEqual(response.status, 400)
 
     def test_requiring_the_code_makes_the_list_view_only(self) -> None:
-        status = self.service.start(require_code=True)
+        status = self.service.start(allow_uploads=False, require_code=True)
         self.assertTrue(status["require_code"])
         self.assertEqual(status["access_code"], "0427")
         (self.folder / "notes.txt").write_text("hi")

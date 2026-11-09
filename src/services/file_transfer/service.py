@@ -41,7 +41,7 @@ class FileTransferService:
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
 
-    def start(self, allow_uploads: bool = False, require_code: bool = False) -> dict:
+    def start(self, allow_uploads: bool = True, require_code: bool = False) -> dict:
         """Start sharing, or change the upload and code switches while sharing."""
 
         with self._lock:
