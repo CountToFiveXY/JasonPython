@@ -88,6 +88,7 @@ class TextRecognitionServiceTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
         self.assertEqual(result.lines[0].confidence, 0.97)
+        self.assertEqual(vars(result.lines[0].bounds), {"x": 40, "y": 62, "width": 100, "height": 20})
 
     async def test_orders_rows_before_columns(self) -> None:
         paragraphs = [
@@ -169,6 +170,7 @@ class TextRecognitionRouterTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual([line.text for line in response.lines], ["NOTRE DAME"])
         self.assertEqual(response.text, "NOTRE DAME")
+        self.assertEqual(response.lines[0].bounds.model_dump(), {"x": 10, "y": 10, "width": 100, "height": 20})
 
     async def test_refuses_a_body_that_is_not_an_image(self) -> None:
         service = TextRecognitionService(FakeVision())

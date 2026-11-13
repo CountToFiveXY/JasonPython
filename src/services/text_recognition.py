@@ -29,9 +29,18 @@ class TextRecognitionUnavailableError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class TextBounds:
+    x: int
+    y: int
+    width: int
+    height: int
+
+
+@dataclass(frozen=True)
 class TextLine:
     text: str
     confidence: float
+    bounds: TextBounds | None = None
 
 
 @dataclass(frozen=True)
@@ -121,5 +130,11 @@ class TextRecognitionService:
             ]
             text = " ".join(word for word in words if word).strip()
             if text:
-                lines.append(TextLine(text=text, confidence=round(paragraph.confidence, 3)))
+                vertices = paragraph.bounding_box.vertices
+                xs = [vertex.x for vertex in vertices]
+                ys = [vertex.y for vertex in vertices]
+                bounds = None
+                if xs and ys and max(xs) > min(xs) and max(ys) > min(ys):
+                    bounds = TextBounds(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+                lines.append(TextLine(text=text, confidence=round(paragraph.confidence, 3), bounds=bounds))
         return lines

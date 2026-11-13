@@ -47,7 +47,10 @@ async def read_text(
     return TextRecognitionResponse(
         text=recognized.text,
         lines=[
-            TextLineResponse(text=line.text, confidence=line.confidence)
+            TextLineResponse(
+                text=line.text, confidence=line.confidence,
+                bounds=vars(line.bounds) if line.bounds is not None else None,
+            )
             for line in recognized.lines
         ],
     )
