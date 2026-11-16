@@ -10,7 +10,7 @@ from google.cloud import pubsub_v1
 from src.schemas.asphalt_tasks import AsphaltTaskType
 
 
-ASPHALT_TASKS_TOPIC = "asphalt_tasks"
+ASPHALT_TASKS_TOPIC = "asphalt_legend_topic"
 PUBLISH_TIMEOUT_SECONDS = 10
 
 

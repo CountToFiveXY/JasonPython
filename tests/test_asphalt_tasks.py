@@ -9,7 +9,6 @@ from pydantic import ValidationError
 from src.routers.asphalt_tasks import publish_task
 from src.schemas.asphalt_tasks import AsphaltTaskRequest, AsphaltTaskType
 from src.services.asphalt_tasks import (
-    ASPHALT_TASKS_TOPIC,
     AsphaltTaskService,
 )
 
@@ -45,7 +44,7 @@ class AsphaltTaskTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.message_id, "message-123")
         self.assertEqual(
             response.topic,
-            f"projects/jasonapp-xm0830/topics/{ASPHALT_TASKS_TOPIC}",
+            "projects/jasonapp-xm0830/topics/asphalt_legend_topic",
         )
         topic, data = publisher.calls[0]
         self.assertEqual(topic, response.topic)
