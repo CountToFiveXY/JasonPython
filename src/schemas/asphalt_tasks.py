@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 class AsphaltTaskType(str, Enum):
     RESET = "RESET"
     REFILL_ADS = "REFILL_ADS"
+    START_GAME = "START_GAME"
 
 
 class AsphaltTaskRequest(BaseModel):
@@ -16,7 +17,7 @@ class AsphaltTaskRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_repeat(self) -> "AsphaltTaskRequest":
-        if self.type == AsphaltTaskType.RESET and self.repeat is not None:
+        if self.type != AsphaltTaskType.REFILL_ADS and self.repeat is not None:
             raise ValueError("repeat is only supported for REFILL_ADS")
         if self.type == AsphaltTaskType.REFILL_ADS and self.repeat is None:
             self.repeat = 8

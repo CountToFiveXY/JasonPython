@@ -4,8 +4,8 @@
 Cloud Pub/Sub topic `asphalt_legend_topic`. It uses the same Google credentials
 and project as Firestore.
 
-The `type` field accepts `RESET` and `REFILL_ADS`. A refill also accepts an
-integer `repeat` from 1 through 99; when omitted, it defaults to 8:
+The `type` field accepts `RESET`, `START_GAME`, and `REFILL_ADS`. A refill also
+accepts an integer `repeat` from 1 through 99; when omitted, it defaults to 8:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/asphalt-tasks \
@@ -39,6 +39,12 @@ Refill includes its repeat count in that single message:
 
 ```json
 {"type":"REFILL_ADS","repeat":8}
+```
+
+Start game uses:
+
+```json
+{"type":"START_GAME"}
 ```
 
 An unsupported type returns `422`. Missing Google credentials or a Pub/Sub
