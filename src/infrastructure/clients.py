@@ -9,7 +9,7 @@ from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from fastapi import FastAPI, HTTPException, Request, status
 from firebase_admin import firestore
 from google.auth.exceptions import DefaultCredentialsError
-from google.cloud import vision
+from google.cloud import pubsub_v1, vision
 from google.cloud.firestore_v1 import Client as FirestoreClient
 from redis.asyncio import Redis
 from temporalio.client import Client
@@ -100,6 +100,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.cache_watcher.stop()
         if kafka_producer is not None:
             await kafka_producer.stop()
+        if hasattr(app.state, "pubsub_publisher"):
+            with suppress(Exception):
+                await asyncio.to_thread(app.state.pubsub_publisher.stop)
         await redis_client.aclose()
 
 
@@ -240,6 +243,24 @@ def get_firestore(request: Request) -> FirestoreClient:
             detail=(
                 "Firestore credentials are not configured. Set "
                 "GOOGLE_APPLICATION_CREDENTIALS to a Firebase service-account "
+                "JSON file."
+            ),
+        ) from exc
+
+
+def get_pubsub_publisher(request: Request) -> pubsub_v1.PublisherClient:
+    """The shared Pub/Sub publisher, created only when its API is used."""
+
+    try:
+        if not hasattr(request.app.state, "pubsub_publisher"):
+            request.app.state.pubsub_publisher = pubsub_v1.PublisherClient()
+        return request.app.state.pubsub_publisher
+    except DefaultCredentialsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Pub/Sub credentials are not configured. Set "
+                "GOOGLE_APPLICATION_CREDENTIALS to the Firebase service-account "
                 "JSON file."
             ),
         ) from exc

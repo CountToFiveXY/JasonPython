@@ -2,6 +2,7 @@ aiokafka
 certifi
 fastapi
 firebase-admin
+google-cloud-pubsub
 google-cloud-vision
 redis
 temporalio
