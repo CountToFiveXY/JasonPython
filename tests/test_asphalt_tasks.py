@@ -50,15 +50,35 @@ class AsphaltTaskTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(topic, response.topic)
         self.assertEqual(json.loads(data), {"type": "RESET"})
         self.assertEqual(len(json.loads(data)), 1)
+        self.assertEqual(response.repeat, None)
 
     async def test_publishes_refill_ads(self) -> None:
         publisher = FakePublisher()
         service = AsphaltTaskService(publisher, "jasonapp-xm0830")
 
-        published = await service.publish(AsphaltTaskType.REFILL_ADS)
+        published = await service.publish(AsphaltTaskType.REFILL_ADS, repeat=12)
 
         self.assertEqual(published.type, AsphaltTaskType.REFILL_ADS)
-        self.assertEqual(json.loads(publisher.calls[0][1]), {"type": "REFILL_ADS"})
+        self.assertEqual(published.repeat, 12)
+        self.assertEqual(len(publisher.calls), 1)
+        self.assertEqual(
+            json.loads(publisher.calls[0][1]),
+            {"type": "REFILL_ADS", "repeat": 12},
+        )
+
+    def test_defaults_refill_repeat_to_eight(self) -> None:
+        request = AsphaltTaskRequest(type="REFILL_ADS")
+
+        self.assertEqual(request.repeat, 8)
+
+    def test_rejects_refill_repeat_outside_one_to_ninety_nine(self) -> None:
+        for repeat in (0, 100):
+            with self.subTest(repeat=repeat), self.assertRaises(ValidationError):
+                AsphaltTaskRequest(type="REFILL_ADS", repeat=repeat)
+
+    def test_rejects_repeat_for_reset(self) -> None:
+        with self.assertRaises(ValidationError):
+            AsphaltTaskRequest(type="RESET", repeat=8)
 
     def test_rejects_unknown_type(self) -> None:
         with self.assertRaises(ValidationError):

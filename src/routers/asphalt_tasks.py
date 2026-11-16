@@ -17,18 +17,20 @@ router = APIRouter(prefix="/v1/asphalt-tasks", tags=["Asphalt Tasks"])
     "",
     response_model=AsphaltTaskResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    response_model_exclude_none=True,
 )
 async def publish_task(
     request: AsphaltTaskRequest,
     service: AsphaltTaskService = Depends(get_asphalt_task_service),
 ) -> AsphaltTaskResponse:
     try:
-        published = await service.publish(request.type)
+        published = await service.publish(request.type, request.repeat)
     except AsphaltTaskPublishError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return AsphaltTaskResponse(
         type=published.type,
+        repeat=published.repeat,
         topic=published.topic,
         message_id=published.message_id,
     )

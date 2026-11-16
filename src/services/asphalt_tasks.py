@@ -21,6 +21,7 @@ class AsphaltTaskPublishError(RuntimeError):
 @dataclass(frozen=True)
 class PublishedAsphaltTask:
     type: AsphaltTaskType
+    repeat: int | None
     topic: str
     message_id: str
 
@@ -37,11 +38,19 @@ class AsphaltTaskService:
     async def publish(
         self,
         task_type: AsphaltTaskType,
+        repeat: int | None = None,
     ) -> PublishedAsphaltTask:
-        # Keep the wire message deliberately small and stable for the Windows
-        # subscriber: its JSON body contains exactly one field.
+        payload: dict[str, str | int] = {"type": task_type.value}
+        if task_type == AsphaltTaskType.REFILL_ADS:
+            repeat = 8 if repeat is None else repeat
+            if not 1 <= repeat <= 99:
+                raise ValueError("repeat must be between 1 and 99")
+            payload["repeat"] = repeat
+        elif repeat is not None:
+            raise ValueError("repeat is only supported for REFILL_ADS")
+
         data = json.dumps(
-            {"type": task_type.value},
+            payload,
             separators=(",", ":"),
         ).encode("utf-8")
 
@@ -58,6 +67,7 @@ class AsphaltTaskService:
 
         return PublishedAsphaltTask(
             type=task_type,
+            repeat=repeat,
             topic=self._topic,
             message_id=message_id,
         )

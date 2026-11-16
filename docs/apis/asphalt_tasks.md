@@ -4,13 +4,19 @@
 Cloud Pub/Sub topic `asphalt_legend_topic`. It uses the same Google credentials
 and project as Firestore.
 
-The request accepts exactly one field. Its allowed values are `RESET` and
-`REFILL_ADS`:
+The `type` field accepts `RESET` and `REFILL_ADS`. A refill also accepts an
+integer `repeat` from 1 through 99; when omitted, it defaults to 8:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/asphalt-tasks \
   -H 'Content-Type: application/json' \
   -d '{"type":"RESET"}'
+```
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/asphalt-tasks \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"REFILL_ADS","repeat":8}'
 ```
 
 The API returns `202 Accepted` after Pub/Sub acknowledges the publish:
@@ -23,10 +29,16 @@ The API returns `202 Accepted` after Pub/Sub acknowledges the publish:
 }
 ```
 
-The Pub/Sub message body itself remains the same one-field JSON object:
+Each API request publishes exactly one Pub/Sub message. Reset uses:
 
 ```json
 {"type":"RESET"}
+```
+
+Refill includes its repeat count in that single message:
+
+```json
+{"type":"REFILL_ADS","repeat":8}
 ```
 
 An unsupported type returns `422`. Missing Google credentials or a Pub/Sub

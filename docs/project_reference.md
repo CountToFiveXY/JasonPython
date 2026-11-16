@@ -122,7 +122,7 @@
 | `POST` | `/workflows/hello` | None | Starts `HelloWorkflow` and returns its result. | [Guide](apis/hello.md) |
 | `POST` | `/v1/order` | JSON `user_id` field | Creates an order and starts a signal-waiting `OrderWorkflow`. | [Guide](apis/order.md) |
 | `POST` | `/v1/messages` | Typed `EventType` and `detailed_payload` envelope | Routes order and scheduler events to their dedicated Kafka topics. | [Guide](apis/messages.md) |
-| `POST` | `/v1/asphalt-tasks` | JSON `type`: `RESET` or `REFILL_ADS` | Publishes a one-shot command to Google Cloud Pub/Sub. | [Guide](apis/asphalt_tasks.md) |
+| `POST` | `/v1/asphalt-tasks` | JSON `type`; `REFILL_ADS` also accepts `repeat` from 1–99 | Publishes one command to Google Cloud Pub/Sub. | [Guide](apis/asphalt_tasks.md) |
 | `GET` | `/v1/gauntlet/maps` | None | Lists the maps, ordered by name. | [Guide](apis/gauntlet.md) |
 | `GET` | `/v1/gauntlet/cars` | None | Lists every car holding a time, for the car selector. | [Guide](apis/gauntlet.md) |
 | `POST` | `/v1/gauntlet/maps` | JSON `name` and two `tracks` names | Creates a map and its fixed pair of tracks. | [Guide](apis/gauntlet.md) |
