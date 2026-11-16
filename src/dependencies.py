@@ -2,7 +2,7 @@
 
 from fastapi import Depends
 from aiokafka import AIOKafkaProducer
-from google.cloud import vision
+from google.cloud import pubsub_v1, vision
 from google.cloud.firestore_v1 import Client as FirestoreClient
 from redis.asyncio import Redis
 from temporalio.client import Client as TemporalClient
@@ -13,6 +13,7 @@ from src.infrastructure.clients import (
     get_vision,
     get_kafka_producer,
     get_optional_kafka_producer,
+    get_pubsub_publisher,
     get_redis,
     get_temporal,
 )
@@ -30,6 +31,7 @@ from src.services import (
     TextRecognitionService,
     UrlShorteningService,
 )
+from src.services.asphalt_legend import AsphaltLegendService
 
 
 def get_file_transfer_service(
@@ -78,6 +80,15 @@ def get_message_service(
     """Build a message service around the shared Kafka producer."""
 
     return MessageService(producer)
+
+
+def get_asphalt_legend_service(
+    publisher: pubsub_v1.PublisherClient = Depends(get_pubsub_publisher),
+    firestore_client: FirestoreClient = Depends(get_firestore),
+) -> AsphaltLegendService:
+    """Publish to the Pub/Sub project already used by Firestore."""
+
+    return AsphaltLegendService(publisher, firestore_client.project)
 
 
 def get_order_service(
