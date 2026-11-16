@@ -1,9 +1,9 @@
 """HTTP request and response schemas."""
 
-from src.schemas.asphalt_legend import (
-    AsphaltLegendTaskRequest,
-    AsphaltLegendTaskResponse,
-    AsphaltLegendTaskType,
+from src.schemas.asphalt_tasks import (
+    AsphaltTaskRequest,
+    AsphaltTaskResponse,
+    AsphaltTaskType,
 )
 from src.schemas.file_transfer import (
     FileTransferStartRequest,
@@ -51,9 +51,9 @@ from src.schemas.text_recognition import TextLineResponse, TextRecognitionRespon
 from src.schemas.url_shortening import ShortenRequest, ShortenResponse, ShortKey
 
 __all__ = [
-    "AsphaltLegendTaskRequest",
-    "AsphaltLegendTaskResponse",
-    "AsphaltLegendTaskType",
+    "AsphaltTaskRequest",
+    "AsphaltTaskResponse",
+    "AsphaltTaskType",
     "CarListResponse",
     "CarPath",
     "CarSummaryResponse",

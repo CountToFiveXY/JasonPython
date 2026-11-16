@@ -2,7 +2,7 @@ from fastapi import FastAPI
 
 from src.infrastructure.clients import lifespan
 from src.routers import (
-    asphalt_legend,
+    asphalt_tasks,
     file_transfer,
     leaderboard,
     ledger,
@@ -30,4 +30,4 @@ app.include_router(gauntlet.router)
 app.include_router(text_recognition.router)
 app.include_router(file_transfer.router)
 app.include_router(ledger.router)
-app.include_router(asphalt_legend.router)
+app.include_router(asphalt_tasks.router)

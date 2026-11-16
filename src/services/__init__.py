@@ -1,6 +1,6 @@
 """Application services."""
 
-from src.services.asphalt_legend import AsphaltLegendService
+from src.services.asphalt_tasks import AsphaltTaskService
 from src.services.file_transfer import FileTransferService
 from src.services.health import HealthService
 from src.services.leaderboard import LeaderboardService
@@ -13,7 +13,7 @@ from src.services.text_recognition import TextRecognitionService
 from src.services.url_shortening import UrlShorteningService
 
 __all__ = [
-    "AsphaltLegendService",
+    "AsphaltTaskService",
     "FileTransferService",
     "HealthService",
     "LeaderboardService",

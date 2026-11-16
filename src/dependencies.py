@@ -31,7 +31,7 @@ from src.services import (
     TextRecognitionService,
     UrlShorteningService,
 )
-from src.services.asphalt_legend import AsphaltLegendService
+from src.services.asphalt_tasks import AsphaltTaskService
 
 
 def get_file_transfer_service(
@@ -82,13 +82,13 @@ def get_message_service(
     return MessageService(producer)
 
 
-def get_asphalt_legend_service(
+def get_asphalt_task_service(
     publisher: pubsub_v1.PublisherClient = Depends(get_pubsub_publisher),
     firestore_client: FirestoreClient = Depends(get_firestore),
-) -> AsphaltLegendService:
+) -> AsphaltTaskService:
     """Publish to the Pub/Sub project already used by Firestore."""
 
-    return AsphaltLegendService(publisher, firestore_client.project)
+    return AsphaltTaskService(publisher, firestore_client.project)
 
 
 def get_order_service(
