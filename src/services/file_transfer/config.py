@@ -6,7 +6,7 @@ from pathlib import Path
 FILE_TRANSFER_DIR = Path(
     os.getenv(
         "FILE_TRANSFER_DIR",
-        str(Path.home() / "Documents" / "JasonApp" / "FileTransfer"),
+        str(Path.home() / "JasonApp" / "FileTransfer"),
     )
 )
 

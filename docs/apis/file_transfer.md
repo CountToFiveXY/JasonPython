@@ -1,6 +1,6 @@
 # File Transfer API
 
-Shares `~/Documents/JasonApp/FileTransfer` with every device on the same LAN as
+Shares `~/JasonApp/FileTransfer` with every device on the same LAN as
 a web page. Two switches control what devices can do, both off by default:
 **allow uploads** and **require code** (see [Access](#access)). The API starts
 and stops a separate transfer server; other devices open the returned `url` in
@@ -43,7 +43,7 @@ All three endpoints return the current status:
 ```json
 {
   "running": true,
-  "folder": "/Users/me/Documents/JasonApp/FileTransfer",
+  "folder": "/Users/me/JasonApp/FileTransfer",
   "port": 80,
   "host_name": "jason.local",
   "url": "http://jason.local",
@@ -139,7 +139,7 @@ could read it. That is acceptable on a home network but not on public Wi-Fi.
 
 | Variable             | Default                               |
 |----------------------|---------------------------------------|
-| `FILE_TRANSFER_DIR`  | `~/Documents/JasonApp/FileTransfer`   |
+| `FILE_TRANSFER_DIR`  | `~/JasonApp/FileTransfer`             |
 | `FILE_TRANSFER_PORT` | `80`                                  |
 | `FILE_TRANSFER_HOST_NAME` | `jason.local`                    |
 | `FILE_TRANSFER_MAX_UPLOAD_GB` | `10`                         |
