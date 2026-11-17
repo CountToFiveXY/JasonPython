@@ -9,6 +9,7 @@ class AsphaltTaskType(str, Enum):
     RESET = "RESET"
     REFILL_ADS = "REFILL_ADS"
     START_GAME = "START_GAME"
+    CLOSE_GAME = "CLOSE_GAME"
 
 
 class AsphaltTaskRequest(BaseModel):
