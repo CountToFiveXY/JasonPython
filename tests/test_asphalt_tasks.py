@@ -108,6 +108,20 @@ class AsphaltTaskTests(unittest.IsolatedAsyncioTestCase):
             {"type": "WINDOW"},
         )
 
+    async def test_publishes_mute_as_one_message(self) -> None:
+        publisher = FakePublisher()
+        service = AsphaltTaskService(publisher, "jasonapp-xm0830")
+
+        published = await service.publish(AsphaltTaskType.MUTE)
+
+        self.assertEqual(published.type, AsphaltTaskType.MUTE)
+        self.assertEqual(published.repeat, None)
+        self.assertEqual(len(publisher.calls), 1)
+        self.assertEqual(
+            json.loads(publisher.calls[0][1]),
+            {"type": "MUTE"},
+        )
+
     def test_defaults_refill_repeat_to_eight(self) -> None:
         request = AsphaltTaskRequest(type="REFILL_ADS")
 
@@ -119,7 +133,7 @@ class AsphaltTaskTests(unittest.IsolatedAsyncioTestCase):
                 AsphaltTaskRequest(type="REFILL_ADS", repeat=repeat)
 
     def test_rejects_repeat_for_reset(self) -> None:
-        for task_type in ("RESET", "START_GAME", "CLOSE_GAME", "WINDOW"):
+        for task_type in ("RESET", "START_GAME", "CLOSE_GAME", "WINDOW", "MUTE"):
             with self.subTest(task_type=task_type), self.assertRaises(ValidationError):
                 AsphaltTaskRequest(type=task_type, repeat=8)
 

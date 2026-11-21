@@ -11,6 +11,7 @@ class AsphaltTaskType(str, Enum):
     START_GAME = "START_GAME"
     CLOSE_GAME = "CLOSE_GAME"
     WINDOW = "WINDOW"
+    MUTE = "MUTE"
 
 
 class AsphaltTaskRequest(BaseModel):
