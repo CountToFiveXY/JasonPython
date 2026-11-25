@@ -4,7 +4,7 @@ A small FastAPI project containing utility APIs for URL shortening, image
 responses, event leaderboards, a Gauntlet lap-time tracker,
 health checks, and Temporal workflows. The order API starts a workflow with the order ID, and that workflow
 persists the order to Cloud Firestore through a reusable activity. It then waits
-up to one hour for a success event published to Kafka before running its
+up to one hour for a success event published to Google Cloud Pub/Sub before running its
 completion activity.
 
 All endpoints run from one application and are organized with `APIRouter`.
@@ -19,7 +19,7 @@ and local startup instructions.
 - [Redis reference](docs/depdency/redis_reference.md)
 - [Temporal reference](docs/depdency/temporal_reference.md)
 - [Firestore reference](docs/depdency/firestore_reference.md)
-- [Kafka reference](docs/depdency/kafka_reference.md)
+- [Order messages API](docs/apis/messages.md)
 - [Gauntlet API](docs/apis/gauntlet.md)
 - [How to call the API](docs/how_to_call_api.md)
 - [Project reference](docs/project_reference.md)

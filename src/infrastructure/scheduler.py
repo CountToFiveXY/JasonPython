@@ -4,10 +4,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 
-from aiokafka import AIOKafkaConsumer
-from pydantic import ValidationError
-
-from src.messaging.events import SchedulerAction, SchedulingMessageEvent
+from src.messaging.events import SchedulerAction
 
 
 LOCAL_SCHEDULER_INTERVAL_SECONDS = 60.0
@@ -19,7 +16,7 @@ def _print_heartbeat(message: str) -> None:
 
 
 class LocalSchedulerController:
-    """In-process state changed by the scheduler Kafka consumer."""
+    """In-process state changed by the scheduler API."""
 
     def __init__(self, *, enabled: bool = False) -> None:
         self.enabled = enabled
@@ -29,36 +26,6 @@ class LocalSchedulerController:
 
     def apply(self, action: SchedulerAction) -> None:
         self.enabled = action is SchedulerAction.START
-
-
-async def handle_scheduler_control_message(
-    event: dict,
-    controller: LocalSchedulerController,
-) -> bool:
-    """Validate and apply one Kafka scheduler command."""
-
-    try:
-        message = SchedulingMessageEvent.model_validate(event)
-    except ValidationError as exc:
-        print(f"Ignoring invalid Kafka scheduler command: {exc}", flush=True)
-        return False
-
-    controller.apply(message.detailed_payload.action)
-    print(
-        f"Local scheduler command applied: {message.detailed_payload.action.value}",
-        flush=True,
-    )
-    return True
-
-
-async def consume_scheduler_controls(
-    consumer: AIOKafkaConsumer,
-    controller: LocalSchedulerController,
-) -> None:
-    """Apply commands arriving on the dedicated scheduler topic."""
-
-    async for record in consumer:
-        await handle_scheduler_control_message(record.value, controller)
 
 
 async def run_local_scheduler(

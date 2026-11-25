@@ -1,7 +1,6 @@
 """Application dependency providers."""
 
 from fastapi import Depends
-from aiokafka import AIOKafkaProducer
 from google.cloud import pubsub_v1, vision
 from google.cloud.firestore_v1 import Client as FirestoreClient
 from redis.asyncio import Redis
@@ -11,8 +10,6 @@ from src.infrastructure.clients import (
     get_file_transfer,
     get_firestore,
     get_vision,
-    get_kafka_producer,
-    get_optional_kafka_producer,
     get_pubsub_publisher,
     get_redis,
     get_temporal,
@@ -26,7 +23,6 @@ from src.services import (
     HelloService,
     ImageService,
     GauntletService,
-    MessageService,
     OrderService,
     TextRecognitionService,
     UrlShorteningService,
@@ -44,11 +40,10 @@ def get_file_transfer_service(
 
 def get_health_service(
     redis_client: Redis = Depends(get_redis),
-    kafka_producer: AIOKafkaProducer | None = Depends(get_optional_kafka_producer),
 ) -> HealthService:
     """Build a health service around shared infrastructure clients."""
 
-    return HealthService(redis_client, kafka_producer)
+    return HealthService(redis_client)
 
 
 def get_hello_service(
@@ -72,14 +67,6 @@ def get_gauntlet_service(
     """Build a Gauntlet service around shared Firestore and Redis clients."""
 
     return GauntletService(firestore_client, redis_client)
-
-
-def get_message_service(
-    producer: AIOKafkaProducer = Depends(get_kafka_producer),
-) -> MessageService:
-    """Build a message service around the shared Kafka producer."""
-
-    return MessageService(producer)
 
 
 def get_asphalt_task_service(

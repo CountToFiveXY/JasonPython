@@ -87,7 +87,6 @@
 │   │   └── url_shortening.md
 │   ├── depdency/
 │   │   ├── firestore_reference.md
-│   │   ├── kafka_reference.md
 │   │   ├── redis_reference.md
 │   │   └── temporal_reference.md
 │   ├── how_to_call_api.md
@@ -100,7 +99,7 @@
     ├── test_gauntlet.py
     ├── test_gauntlet_cache_watcher.py
     ├── test_health.py
-    ├── test_kafka_messages.py
+    ├── test_messages.py
     ├── test_leaderboard.py
     ├── test_order.py
     ├── test_order_service.py
@@ -121,7 +120,7 @@
 | `GET` | `/health` | None | Returns the application's health status. | [Guide](apis/health.md) |
 | `POST` | `/workflows/hello` | None | Starts `HelloWorkflow` and returns its result. | [Guide](apis/hello.md) |
 | `POST` | `/v1/order` | JSON `user_id` field | Creates an order and starts a signal-waiting `OrderWorkflow`. | [Guide](apis/order.md) |
-| `POST` | `/v1/messages` | Typed `EventType` and `detailed_payload` envelope | Routes order and scheduler events to their dedicated Kafka topics. | [Guide](apis/messages.md) |
+| `POST` | `/v1/messages` | Typed `EventType` and `detailed_payload` envelope | Publishes order successes to Pub/Sub and applies scheduling commands locally. | [Guide](apis/messages.md) |
 | `POST` | `/v1/asphalt-tasks` | JSON `type`: `RESET`, `START_GAME`, `CLOSE_GAME`, `WINDOW`, `MUTE`, or `REFILL_ADS`; refill also accepts `repeat` from 1–99 | Publishes one command to Google Cloud Pub/Sub. | [Guide](apis/asphalt_tasks.md) |
 | `GET` | `/v1/gauntlet/maps` | None | Lists the maps, ordered by name. | [Guide](apis/gauntlet.md) |
 | `GET` | `/v1/gauntlet/cars` | None | Lists every car holding a time, for the car selector. | [Guide](apis/gauntlet.md) |
@@ -147,13 +146,13 @@ formatting, and translating service errors into HTTP status codes.
 Python's `secrets` module generates eight random letters and digits. Redis
 stores each code-to-URL mapping with an atomic `SET ... NX` command so an
 existing code cannot be overwritten.
-`src/infrastructure/clients.py` manages the asynchronous Redis and Kafka clients for
-the FastAPI lifespan. It also connects FastAPI to Temporal Server and Firestore,
+`src/infrastructure/clients.py` manages the Redis client and shared Pub/Sub publisher for
+FastAPI. It also connects FastAPI to Temporal Server and Firestore,
 and starts `src/infrastructure/gauntlet_cache_watcher.py`, which listens to Firestore and
 clears cached Gauntlet reads when their documents change.
 `src/temporal/worker.py` registers the capability-specific workflows and
 activities under `src/temporal/workflows/` and `src/temporal/activities/`.
-`src/messaging/worker.py` consumes Kafka status events and signals the matching
+`src/messaging/worker.py` consumes Pub/Sub order success events and signals the matching
 order workflow. The Gauntlet API is the one feature that reads and writes
 Firestore directly from a request: `GauntletService` receives the client
 from `get_firestore` and runs the blocking Firestore calls on worker threads.

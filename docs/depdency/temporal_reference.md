@@ -27,7 +27,7 @@ curl -X POST http://127.0.0.1:8000/v1/order \
 ```
 
 The order ID and workflow ID are identical. Search for that ID in the Temporal
-Web UI at <http://127.0.0.1:8233> to inspect its one-hour timer, Kafka-delivered
+Web UI at <http://127.0.0.1:8233> to inspect its one-hour timer, Pub/Sub-delivered
 signal, completion activity, and final result.
 
 ## Configuration

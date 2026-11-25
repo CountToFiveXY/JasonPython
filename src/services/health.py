@@ -1,9 +1,5 @@
 """Infrastructure health-check use case."""
 
-import asyncio
-
-from aiokafka import AIOKafkaProducer
-from aiokafka.errors import KafkaError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
@@ -13,9 +9,8 @@ class RedisUnavailableError(RuntimeError):
 
 
 class HealthService:
-    def __init__(self, redis_client: Redis, kafka_producer: AIOKafkaProducer | None) -> None:
+    def __init__(self, redis_client: Redis) -> None:
         self._redis_client = redis_client
-        self._kafka_producer = kafka_producer
 
     async def check(self) -> dict[str, str]:
         try:
@@ -23,20 +18,4 @@ class HealthService:
         except RedisError as error:
             raise RedisUnavailableError("Redis is unavailable") from error
 
-        if self._kafka_producer is None:
-            # Kafka was not running when the API started.
-            return {"status": "DEGRADED", "redis": "connected", "kafka": "unavailable"}
-        try:
-            metadata_updated = await asyncio.wait_for(
-                self._kafka_producer.client.force_metadata_update(),
-                timeout=3,
-            )
-        except (TimeoutError, KafkaError, OSError):
-            metadata_updated = False
-
-        kafka_status = "connected" if metadata_updated else "unavailable"
-        return {
-            "status": "OK" if metadata_updated else "DEGRADED",
-            "redis": "connected",
-            "kafka": kafka_status,
-        }
+        return {"status": "OK", "redis": "connected"}

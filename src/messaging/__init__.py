@@ -1,1 +1,1 @@
-"""Kafka producer and consumer support."""
+"""Order messaging and scheduler control events."""

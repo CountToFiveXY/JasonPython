@@ -40,7 +40,7 @@ Deletion scheduling is managed entirely by Firestore; no Temporal cleanup
 workflow is started.
 The UUID is used as both the Firestore document ID and Temporal workflow ID.
 The API starts the workflow but does not wait for it to finish. The workflow
-waits for up to one hour for a `SUCCESS` signal. A matching Kafka message causes
+waits for up to one hour for a `SUCCESS` signal. A matching Pub/Sub message causes
 the workflow to run its completion activity, update the persisted status to
 `COMPLETED`, and finish:
 

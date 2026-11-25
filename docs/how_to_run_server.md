@@ -1,8 +1,8 @@
 # How to Run the Server
 
 Follow this guide from the project root when setting up the application for the
-first time. The local environment includes Redis, Kafka, a Kafka message worker,
-Temporal Server, a Temporal worker, and FastAPI.
+first time. The local environment includes Redis, Temporal Server, a Temporal worker,
+a Pub/Sub order success worker, and FastAPI.
 
 The backend reads Firestore and calls Cloud Vision in the `jasonapp-xm0830`
 Google Cloud project, so **each laptop needs its own service account**. See
@@ -48,6 +48,9 @@ Each laptop gets its own service account, created by hand in the
 4. Open the new account → **Keys** → **Add key** → **Create new key** →
    **JSON** → **Create**
 
+For the order success flow, grant **Pub/Sub Publisher** on `order_success`
+and **Pub/Sub Subscriber** on `order_success-sub`.
+
 Move the downloaded key to where `scripts/run_local.sh` looks for it:
 
 ```bash
@@ -65,13 +68,10 @@ its service account in the same page.
 ./scripts/run_local.sh --core  # Start Redis and FastAPI only.
 ```
 
-The core startup runs Redis and FastAPI, which reads Firestore. It does not
-install, start, or wait for Kafka, Temporal, or their workers. FastAPI gives
-Temporal and Kafka five seconds each to connect and then starts without them:
-the workflow and order APIs (Temporal) and the messages API (Kafka) return
-`503` saying the service is not running, `/health` reports `kafka:
-"unavailable"`, and everything else works. JasonApp runs this when it opens
-and the backend is down.
+Core mode starts Redis and FastAPI. Workflow and order creation APIs return
+`503` when Temporal is unavailable. The API can still publish order success
+messages with Google credentials, and the order success worker processes them
+once it starts. JasonApp starts in core mode when it opens and the backend is down.
 
 Run the script without `--core` to start everything; it stops the core
 session first.
@@ -81,17 +81,17 @@ session first.
 Run one command from the project root:
 
 ```bash
-./scripts/run_local.sh  # Start Redis, Temporal Server, the worker, and FastAPI.
+./scripts/run_local.sh  # Start Redis, Temporal, both workers, and FastAPI.
 ```
 
 Leave this terminal open. The script:
 
-1. Installs missing Homebrew dependencies, including Kafka.
+1. Installs missing Homebrew dependencies.
 2. Creates `.venv` and installs Python requirements when needed.
 3. Starts Redis, unless Redis is already running.
-4. Starts Kafka, creates the message topic, and starts its consumer worker.
-5. Starts Temporal Server, unless it is already running.
-6. Starts the Python Temporal worker.
+4. Starts Temporal Server, unless it is already running.
+5. Starts the Python Temporal worker.
+6. Starts the Pub/Sub order success worker.
 7. Starts FastAPI on port 8000, falling back to 8088 and then 8888 when busy.
 
 Running the script again stops the previous session first, so it always
@@ -134,18 +134,18 @@ Search for that ID in the Temporal Web UI to inspect its event history.
 Other available endpoints are documented in
 [How to call the API](how_to_call_api.md).
 
-Publish a Kafka message:
+Publish an order success to Pub/Sub:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/messages \
   -H 'Content-Type: application/json' \
-  -d '{"id":"ORDER_ID_FROM_RESPONSE","status":"SUCCESS"}'
+  -d '{"EventType":"ORDER","detailed_payload":{"id":"ORDER_ID_FROM_RESPONSE","status":"SUCCESS"}}'
 ```
 
 ## Stop the complete local environment
 
 Press `Control+C` in the terminal running `run_local.sh`. The script stops the
-worker, FastAPI, and any Redis or Temporal Server process that it started.
+workers, FastAPI, and any Redis or Temporal Server process that it started.
 
 ## Manual startup
 
@@ -183,8 +183,9 @@ source .venv/bin/activate  # Make this terminal use the project's Python environ
 python -m uvicorn src.main:app --reload --host 0.0.0.0 --port 8000  # Start the FastAPI development server.
 ```
 
-Kafka must also be running on port `9092`, and the Kafka consumer can be run
-manually with `python -m src.messaging.worker`.
+Run `python -m src.messaging.worker` in another terminal with the same Google
+credentials to consume from `order_success-sub`. See the
+[order messages API](apis/messages.md) for the required permissions.
 
 See the [Temporal reference](depdency/temporal_reference.md) for namespace,
 address, and task-queue configuration.
@@ -199,8 +200,6 @@ address, and task-queue configuration.
 - `Error 61 connecting to 127.0.0.1:6379`: Redis is not running or is using a
   different address.
 - A connection error for `127.0.0.1:7233`: Temporal Server is not running.
-- A connection error for `127.0.0.1:9092`: Kafka is not running or the
-  configured broker address is incorrect.
 - A workflow request waits indefinitely: the Temporal worker is not running or
   its namespace or task queue does not match FastAPI.
 - `DefaultCredentialsError`: this laptop has no service-account key. Follow

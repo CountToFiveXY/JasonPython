@@ -1,4 +1,4 @@
-"""HTTP response schemas for Kafka message publishing."""
+"""HTTP response schemas for order messages and local scheduling commands."""
 
 from typing import Annotated, TypeAlias
 
@@ -9,15 +9,10 @@ from src.messaging.events import OrderMessageEvent, SchedulingMessageEvent
 
 class OrderMessageResponse(OrderMessageEvent):
     topic: str
-    partition: int
-    offset: int
+    message_id: str
 
 
-class SchedulingMessageResponse(SchedulingMessageEvent):
-    topic: str
-    partition: int
-    offset: int
-
+SchedulingMessageResponse = SchedulingMessageEvent
 
 MessageResponse: TypeAlias = Annotated[
     OrderMessageResponse | SchedulingMessageResponse,

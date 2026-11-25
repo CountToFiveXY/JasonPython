@@ -1,63 +1,31 @@
-# Messages API
+# Order Messages and Scheduling API
 
-`POST /v1/messages` accepts one typed event envelope and responds after Kafka
-acknowledges the record. `EventType` selects and validates `detailed_payload`,
-then routes the message to its dedicated topic.
+`POST /v1/messages` accepts an `EventType` and its `detailed_payload`.
 
-The HTTP router delegates publishing to `MessageService`, which owns the Kafka
-topic, message key, serialization, and acknowledgement handling.
-
-## Request
-
-```bash
-curl -X POST http://127.0.0.1:8000/v1/messages \
-  -H 'Content-Type: application/json' \
-  -d '{"EventType":"ORDER","detailed_payload":{"id":"ecb3a6c9-f17b-4bac-8e3a-ffc4431599d4","status":"SUCCESS"}}'
-```
-
-## Response
-
-The endpoint responds with HTTP `202 Accepted`:
+## Order success
 
 ```json
-{
-  "EventType": "ORDER",
-  "detailed_payload": {
-    "id": "12345678-1234-1234-1234-123456789abc",
-    "status": "SUCCESS"
-  },
-  "topic": "order-status",
-  "partition": 0,
-  "offset": 1
-}
+{"EventType":"ORDER","detailed_payload":{"id":"ORDER_ID_FROM_RESPONSE","status":"SUCCESS"}}
 ```
 
-The order worker consumes the event independently and sends `update_status` to
-the matching `OrderWorkflow`. See the
-[Kafka reference](../depdency/kafka_reference.md) for runtime configuration.
+The API publishes the same JSON to `projects/jasonapp-xm0830/topics/order_success`.
+A `202 Accepted` response returns the event plus `topic` and Pub/Sub's
+`message_id`. A publish failure returns `503`.
 
-## Control the local scheduler
+The worker pulls from
+`projects/jasonapp-xm0830/subscriptions/order_success-sub` and signals the
+Temporal workflow whose ID matches the order ID. It acknowledges messages
+after a successful signal, discards invalid messages and signals for missing
+workflows, and asks Pub/Sub to redeliver on other signal errors.
 
-The same `POST /v1/messages` endpoint accepts `SCHEDULING` events and publishes
-them to the dedicated `scheduler-control` Kafka topic. A consumer inside FastAPI
-applies the command directly within one second. Redis is not involved; each
-backend restart starts with the scheduler asleep until a new `START` arrives.
+The service account needs `roles/pubsub.publisher` on the topic and
+`roles/pubsub.subscriber` on the subscription.
 
-Stop the heartbeat:
+## Local scheduler
 
-```bash
-curl -X POST http://127.0.0.1:8000/v1/messages \
-  -H 'Content-Type: application/json' \
-  -d '{"EventType":"SCHEDULING","detailed_payload":{"action":"STOP"}}'
+```json
+{"EventType":"SCHEDULING","detailed_payload":{"action":"START"}}
 ```
 
-Start it again:
-
-```bash
-curl -X POST http://127.0.0.1:8000/v1/messages \
-  -H 'Content-Type: application/json' \
-  -d '{"EventType":"SCHEDULING","detailed_payload":{"action":"START"}}'
-```
-
-Both calls return `202 Accepted` after Kafka acknowledges the command. Repeating
-the same command is safe.
+Send `STOP` to turn off the local heartbeat. The API applies the command to
+its in-process scheduler and returns the event with `202 Accepted`.

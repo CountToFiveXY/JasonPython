@@ -7,29 +7,12 @@ from src.services import HealthService
 
 
 class HealthTests(unittest.IsolatedAsyncioTestCase):
-    async def test_reports_kafka_connected(self) -> None:
+    async def test_reports_redis_connected(self) -> None:
         redis = SimpleNamespace(ping=AsyncMock())
-        kafka = SimpleNamespace(
-            client=SimpleNamespace(force_metadata_update=AsyncMock(return_value=True))
-        )
 
-        response = await health_check(HealthService(redis, kafka))
+        response = await health_check(HealthService(redis))
 
-        self.assertEqual(
-            response.model_dump(),
-            {"status": "OK", "redis": "connected", "kafka": "connected"},
-        )
-
-    async def test_reports_degraded_when_kafka_is_unavailable(self) -> None:
-        redis = SimpleNamespace(ping=AsyncMock())
-        kafka = SimpleNamespace(
-            client=SimpleNamespace(force_metadata_update=AsyncMock(return_value=False))
-        )
-
-        response = await health_check(HealthService(redis, kafka))
-
-        self.assertEqual(response.status, "DEGRADED")
-        self.assertEqual(response.kafka, "unavailable")
+        self.assertEqual(response.model_dump(), {"status": "OK", "redis": "connected"})
 
 
 if __name__ == "__main__":

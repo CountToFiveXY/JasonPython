@@ -1,83 +1,81 @@
+"""Consume order successes and signal the corresponding Temporal workflow."""
+
 import asyncio
-import json
-import os
+import logging
+import signal
+from datetime import timedelta
 
-from aiokafka import AIOKafkaConsumer
+from google.cloud import pubsub_v1
+from google.cloud.pubsub_v1.subscriber.message import Message
 from pydantic import ValidationError
-from temporalio.client import Client
+from temporalio.client import Client, RPCError, RPCStatusCode
 
-from src.messaging.config import (
-    KAFKA_BOOTSTRAP_SERVERS,
-    KAFKA_ORDER_CONSUMER_GROUP,
-    KAFKA_ORDER_TOPIC,
-)
-from src.messaging.events import OrderMessageEvent, OrderStatus
+from src.infrastructure.clients import TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE
+from src.messaging.config import ORDER_SUCCESS_SUBSCRIPTION
+from src.messaging.events import OrderMessageEvent
 from src.temporal.workflows.order import OrderWorkflow
 
 
-TEMPORAL_ADDRESS = os.getenv("TEMPORAL_ADDRESS", "127.0.0.1:7233")
-TEMPORAL_NAMESPACE = os.getenv("TEMPORAL_NAMESPACE", "default")
+logger = logging.getLogger(__name__)
 
 
-async def handle_message(
-    event: dict,
-    temporal_client: Client,
-) -> None:
-    """Signal the matching order workflow for a valid success event."""
+async def handle_message(message: Message, temporal_client: Client) -> None:
     try:
-        message = OrderMessageEvent.model_validate(event)
-    except ValidationError as exc:
-        print(f"Ignoring invalid Kafka message: {exc}", flush=True)
+        event = OrderMessageEvent.model_validate_json(message.data).detailed_payload
+    except ValidationError:
+        logger.warning("Discarding invalid order success message %s", message.message_id)
+        message.ack()
         return
 
-    order_event = message.detailed_payload
-    if order_event.status is not OrderStatus.SUCCESS:
+    try:
+        await temporal_client.get_workflow_handle(event.id).signal(
+            OrderWorkflow.update_status,
+            event.status.value,
+            rpc_timeout=timedelta(seconds=10),
+        )
+    except RPCError as exc:
+        if exc.status == RPCStatusCode.NOT_FOUND:
+            logger.warning("Order workflow %s is unavailable for signaling: %s", event.id, exc)
+            message.ack()
+            return
+        logger.exception("Could not signal order workflow %s", event.id)
+        message.nack()
+        return
+    except Exception:
+        logger.exception("Could not signal order workflow %s", event.id)
+        message.nack()
         return
 
-    workflow_handle = temporal_client.get_workflow_handle(order_event.id)
-    await workflow_handle.signal(OrderWorkflow.update_status, order_event.status.value)
-    print(
-        f"Temporal workflow signaled: id={order_event.id} "
-        f"status={order_event.status.value}",
-        flush=True,
-    )
+    message.ack()
 
 
 async def main() -> None:
-    temporal_client = await Client.connect(
-        TEMPORAL_ADDRESS,
-        namespace=TEMPORAL_NAMESPACE,
-    )
-    consumer = AIOKafkaConsumer(
-        KAFKA_ORDER_TOPIC,
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        group_id=KAFKA_ORDER_CONSUMER_GROUP,
-        auto_offset_reset="earliest",
-        enable_auto_commit=False,
-        value_deserializer=lambda value: json.loads(value.decode("utf-8")),
-    )
-    await consumer.start()
-    print(
-        f"Kafka worker polling topic={KAFKA_ORDER_TOPIC} "
-        f"group={KAFKA_ORDER_CONSUMER_GROUP}",
-        flush=True,
-    )
-    try:
-        async for record in consumer:
-            while True:
-                try:
-                    await handle_message(record.value, temporal_client)
-                    await consumer.commit()
-                    break
-                except Exception as exc:
-                    print(
-                        f"Kafka message handling failed; retrying: {exc}",
-                        flush=True,
-                    )
-                    await asyncio.sleep(5)
-    finally:
-        await consumer.stop()
+    temporal_client = await Client.connect(TEMPORAL_ADDRESS, namespace=TEMPORAL_NAMESPACE)
+    loop = asyncio.get_running_loop()
+
+    def callback(message: Message) -> None:
+        asyncio.run_coroutine_threadsafe(handle_message(message, temporal_client), loop).result()
+
+    with pubsub_v1.SubscriberClient() as subscriber:
+        stream = subscriber.subscribe(
+            ORDER_SUCCESS_SUBSCRIPTION,
+            callback=callback,
+            flow_control=pubsub_v1.types.FlowControl(max_messages=10),
+            await_callbacks_on_shutdown=True,
+        )
+        loop.add_signal_handler(signal.SIGTERM, stream.cancel)
+        loop.add_signal_handler(signal.SIGINT, stream.cancel)
+        logger.info("Listening on %s", ORDER_SUCCESS_SUBSCRIPTION)
+        finished = asyncio.wrap_future(stream)
+        try:
+            await asyncio.shield(finished)
+        finally:
+            loop.remove_signal_handler(signal.SIGTERM)
+            loop.remove_signal_handler(signal.SIGINT)
+            stream.cancel()
+            await finished
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
