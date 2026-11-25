@@ -27,6 +27,7 @@ temporal_pid=""
 worker_pid=""
 order_success_worker_pid=""
 api_pid=""
+bonjour_pid=""
 api_port=""
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
@@ -188,7 +189,7 @@ wait_for_port() {
 cleanup() {
     trap - EXIT INT TERM
 
-    for pid in "$api_pid" "$order_success_worker_pid" "$worker_pid" "$temporal_pid"; do
+    for pid in "$bonjour_pid" "$api_pid" "$order_success_worker_pid" "$worker_pid" "$temporal_pid"; do
         if [[ -n "$pid" ]] && kill -0 "$pid" >/dev/null 2>&1; then
             kill "$pid" >/dev/null 2>&1 || true
         fi
@@ -288,6 +289,11 @@ fi
 highlight "Starting FastAPI at http://127.0.0.1:$api_port..."
 "$python_bin" -m uvicorn src.main:app --host 0.0.0.0 --port "$api_port" &
 api_pid=$!
+
+if command -v dns-sd >/dev/null 2>&1 && wait_for_port 127.0.0.1 "$api_port" FastAPI; then
+    dns-sd -R "JasonPython" _jasonpython._tcp local "$api_port" &
+    bonjour_pid=$!
+fi
 
 (( core_only )) || highlight_link "Temporal Web UI" "http://127.0.0.1:8233"
 highlight_link "You can now try calling APIs in -->" "http://127.0.0.1:$api_port/docs"
