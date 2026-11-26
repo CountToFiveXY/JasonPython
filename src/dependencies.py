@@ -9,6 +9,7 @@ from temporalio.client import Client as TemporalClient
 from src.infrastructure.clients import (
     get_file_transfer,
     get_firestore,
+    get_order_temporal,
     get_vision,
     get_pubsub_publisher,
     get_redis,
@@ -79,7 +80,7 @@ def get_asphalt_task_service(
 
 
 def get_order_service(
-    temporal_client: TemporalClient = Depends(get_temporal),
+    temporal_client: TemporalClient = Depends(get_order_temporal),
 ) -> OrderService:
     """Build an order service around the shared Temporal client."""
 
