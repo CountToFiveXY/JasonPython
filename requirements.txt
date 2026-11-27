@@ -4,5 +4,6 @@ firebase-admin
 google-cloud-pubsub
 google-cloud-vision
 redis
-temporalio
+temporalio>=1.31.0
+nexus-rpc
 uvicorn[standard]

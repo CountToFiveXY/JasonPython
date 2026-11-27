@@ -10,6 +10,8 @@ with workflow.unsafe.imports_passed_through():
         write_firestore_document,
     )
     from src.temporal.activities.order import complete_order
+    from src.temporal.config import TEMPORAL_GREETING_NEXUS_ENDPOINT
+    from src.temporal.greeting_nexus import GreetingService, OrderGreeting
 
 
 @dataclass
@@ -50,6 +52,19 @@ class OrderWorkflow:
             ),
             start_to_close_timeout=timedelta(seconds=30),
         )
+
+        if workflow.patched("greet-before-waiting-for-order-success"):
+            greeting = workflow.create_nexus_client(
+                endpoint=TEMPORAL_GREETING_NEXUS_ENDPOINT, service=GreetingService
+            )
+            await greeting.execute_operation(
+                GreetingService.greet,
+                OrderGreeting(
+                    workflow_id=f"order-greeting-{workflow.info().run_id}",
+                    name=request.user_id,
+                ),
+                schedule_to_close_timeout=timedelta(minutes=2),
+            )
 
         try:
             await workflow.wait_condition(

@@ -14,7 +14,8 @@ from src.temporal.config import (
     TEMPORAL_ORDER_NAMESPACE,
     TEMPORAL_PAYOUT_NAMESPACE,
 )
-from src.temporal.workflows.greeting import GreetingWorkflow
+from src.temporal.greeting_nexus import GreetingService
+from src.temporal.workflows.payout import PayoutWorkflow
 from src.temporal.workflows.hello import HelloWorkflow
 from src.temporal.workflows.order import OrderWorkflow
 
@@ -24,12 +25,12 @@ TEMPORAL_TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "utility-api")
 
 async def main() -> None:
     registrations = (
-        (TEMPORAL_NAMESPACE, HelloWorkflow, [print_hello]),
-        (TEMPORAL_ORDER_NAMESPACE, OrderWorkflow, [complete_order, write_firestore_document]),
-        (TEMPORAL_PAYOUT_NAMESPACE, GreetingWorkflow, [compose_greeting]),
+        (TEMPORAL_NAMESPACE, HelloWorkflow, [print_hello], []),
+        (TEMPORAL_ORDER_NAMESPACE, OrderWorkflow, [complete_order, write_firestore_document], []),
+        (TEMPORAL_PAYOUT_NAMESPACE, PayoutWorkflow, [compose_greeting], [GreetingService()]),
     )
     workers = []
-    for namespace, workflow_type, activities in registrations:
+    for namespace, workflow_type, activities, nexus_handlers in registrations:
         client = await Client.connect(TEMPORAL_ADDRESS, namespace=namespace)
         workers.append(
             Worker(
@@ -37,6 +38,7 @@ async def main() -> None:
                 task_queue=TEMPORAL_TASK_QUEUE,
                 workflows=[workflow_type],
                 activities=activities,
+                nexus_service_handlers=nexus_handlers,
             )
         )
 

@@ -1,9 +1,11 @@
 import asyncio
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from src.temporal.activities.firestore import write_firestore_document
 from src.temporal.activities.order import complete_order
+from src.temporal.greeting_nexus import GreetingService, OrderGreeting
 from src.temporal.workflows.order import OrderWorkflow, OrderWorkflowInput
 
 
@@ -42,10 +44,25 @@ class OrderWorkflowTests(unittest.IsolatedAsyncioTestCase):
             side_effect=["written", "Order order-123 completed", "updated"]
         )
 
+        greet = AsyncMock(return_value="Hello, user-123!")
+
+        async def wait_for_success(*args, **kwargs):
+            greet.assert_awaited_once()
+            self.assertEqual(execute_activity.await_count, 1)
+
         with (
+            patch("src.temporal.workflows.order.workflow.patched", return_value=True),
+            patch(
+                "src.temporal.workflows.order.workflow.info",
+                return_value=SimpleNamespace(run_id="run-123"),
+            ),
+            patch(
+                "src.temporal.workflows.order.workflow.create_nexus_client",
+                return_value=SimpleNamespace(execute_operation=greet),
+            ) as create_nexus_client,
             patch(
                 "src.temporal.workflows.order.workflow.wait_condition",
-                AsyncMock(),
+                side_effect=wait_for_success,
             ),
             patch(
                 "src.temporal.workflows.order.workflow.execute_activity",
@@ -55,6 +72,11 @@ class OrderWorkflowTests(unittest.IsolatedAsyncioTestCase):
             result = await workflow.run(workflow_input())
 
         self.assertEqual(result, "Order order-123 completed")
+        self.assertEqual(create_nexus_client.call_args.kwargs["service"], GreetingService)
+        self.assertEqual(
+            greet.await_args.args,
+            (GreetingService.greet, OrderGreeting("order-greeting-run-123", "user-123")),
+        )
         calls = execute_activity.await_args_list
         initial_write = calls[0].args[1]
         self.assertEqual(initial_write.fields["status"], "STARTED")
@@ -70,6 +92,7 @@ class OrderWorkflowTests(unittest.IsolatedAsyncioTestCase):
         execute_activity = AsyncMock(return_value="written")
 
         with (
+            patch("src.temporal.workflows.order.workflow.patched", return_value=False),
             patch("src.temporal.workflows.order.workflow.wait_condition", wait_condition),
             patch(
                 "src.temporal.workflows.order.workflow.execute_activity",

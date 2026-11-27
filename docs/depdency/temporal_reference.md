@@ -7,7 +7,7 @@ Each uses its own namespace.
 | --- | --- | --- |
 | `HelloWorkflow` | `default` | FastAPI |
 | `OrderWorkflow` | `order` | FastAPI |
-| `GreetingWorkflow` | `payout` | Temporal CLI or another Temporal client |
+| `PayoutWorkflow` | `payout` | Order workflow via Nexus, or a Temporal client |
 
 For the complete local startup sequence, follow
 [How to run the server](../how_to_run_server.md). This page explains the
@@ -35,7 +35,11 @@ curl -X POST http://127.0.0.1:8000/v1/order \
 
 The order ID and workflow ID are identical. Search for that ID in the Temporal
 Web UI under `order` at <http://127.0.0.1:8233> to inspect its one-hour timer, Pub/Sub-delivered
-signal, completion activity, and final result.
+signal, completion activity, and final result. New orders first await the
+`PayoutWorkflow` result from the `payout` namespace via the `payout-greeting`
+Nexus endpoint. The greeting uses the order's user ID. The one-hour signal
+wait starts after the greeting succeeds. If the Nexus operation fails or times
+out after two minutes, the order workflow fails.
 
 ## Configuration
 
@@ -47,17 +51,30 @@ Both the API and worker recognize these environment variables:
 | `TEMPORAL_NAMESPACE` (hello) | `default` |
 | `TEMPORAL_ORDER_NAMESPACE` | `order` |
 | `TEMPORAL_PAYOUT_NAMESPACE` | `payout` |
+| `TEMPORAL_GREETING_NEXUS_ENDPOINT` | `payout-greeting` |
 | `TEMPORAL_TASK_QUEUE` | `utility-api` |
 
 Set the same namespace values across the API, Temporal workers, and Pub/Sub
 subscriber. For a remote Temporal address, provision the configured namespaces
 before starting the application. The local launcher creates them automatically
-for the local server.
+for the local server along with the greeting Nexus endpoint. For a remote
+server or manual startup, create the endpoint before starting orders:
+
+```bash
+temporal operator nexus endpoint create --name payout-greeting \
+  --target-namespace payout --target-task-queue utility-api
+```
+
+For an existing endpoint, keep its target aligned with the configured payout
+namespace and task queue.
 
 For an existing deployment, stop starting order and greeting workflows in the
 old namespace and let those executions finish with the old workers and signal
 routing before switching to this version. Existing workflow executions and their
-histories stay in the namespace where they started.
+histories stay in the namespace where they started. Before deploying the rename
+from `GreetingWorkflow` to `PayoutWorkflow`, let any still-running
+`GreetingWorkflow` executions finish and update direct callers to the new
+workflow type.
 
 ## Troubleshooting
 
