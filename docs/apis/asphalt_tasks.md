@@ -55,6 +55,11 @@ in Firestore. The backend account needs subscriber access on that subscription
 and write access to the Firestore collection `asphalt_tasks`. Each document
 stores the task `type`, e.g. `REFILL_ADS`.
 
+`GET /v1/asphalt-tasks` returns the last 10 requests in newest-first order.
+Each entry includes the task type, request time, and status. Untracked
+commands show `SUBMITTED` after Pub/Sub accepts them. Refill status updates
+continue to come from the worker.
+
 Start game uses:
 
 ```json
@@ -89,5 +94,84 @@ Local startup reads `~/.config/jasonapp/service-account.json` through
 `Pub/Sub Publisher` (`roles/pubsub.publisher`) role on
 `asphalt_task_requests`. Scope its subscriber access to the result subscription.
 
-The Windows worker should use a separate service account with subscriber
-permission only on its pull subscription.
+The Windows worker uses a separate service account with
+`roles/pubsub.subscriber` on `asphalt_task_requests_sub` and
+`roles/pubsub.publisher` on `asphalt_task_results`.
+
+## Task request and result flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as JasonUI or WeChat mini program
+    participant API as JasonPython HTTP API
+    participant DB as Firestore default database
+    participant Req as Pub/Sub requests
+    participant Win as JasonJava Windows worker
+    participant Res as Pub/Sub results
+    participant Consumer as JasonPython result consumer
+
+    UI->>API: POST /v1/asphalt-tasks with type and optional repeat
+    API->>DB: Create asphalt_tasks/{task_id} with type, QUEUED, and timestamps
+    API->>Req: Publish command to asphalt_task_requests
+    Note over API,Req: Refill carries task_id as a Pub/Sub attribute
+    Req-->>API: Pub/Sub accepts the command and returns message_id
+    opt Command other than Refill
+        API->>DB: Record SUBMITTED
+    end
+    API-->>UI: 202 Accepted with message_id and task_id for Refill
+    Note over UI,API: HTTP 202 confirms submission. Windows execution is asynchronous.
+
+    Req->>Win: Deliver via asphalt_task_requests_sub
+    alt Tracked Refill
+        alt First delivery
+            Win->>Win: Create local claim for task_id
+            Win->>Res: Try to publish RUNNING to asphalt_task_results
+            Win->>Win: Run refill script with requested repeat count
+            Win->>Win: Save SUCCEEDED or FAILED locally
+        else Redelivery
+            Win->>Win: Load saved result or save UNKNOWN if only the claim exists
+        end
+        Win->>Res: Publish final result with task_id, status, and optional error
+        alt Final result publish accepted
+            Win-->>Req: ACK the request
+        else Final result publish fails
+            Win-->>Req: NACK so the saved result can be retried
+        end
+    else Command without Refill tracking
+        Win->>Win: Run the task script
+        Win-->>Req: ACK on success or NACK on failure
+    end
+
+    Note over Res,Consumer: Results are consumed in the background as they arrive
+    loop Each Refill result event
+        Res->>Consumer: Deliver via asphalt_task_results_sub
+        Consumer->>DB: Apply status by task_id in a transaction
+        alt Firestore processing succeeds
+            DB-->>Consumer: Commit update or ignore duplicate or late event
+            Consumer-->>Res: ACK the result
+        else Firestore processing fails
+            Consumer-->>Res: NACK the result for redelivery
+        end
+    end
+
+    loop About every 2 seconds while tracking a Refill
+        UI->>API: GET /v1/asphalt-tasks/{task_id}
+        API->>DB: Read asphalt_tasks/{task_id}
+        DB-->>API: Current saved status
+        API-->>UI: Status and optional error
+    end
+    Note over UI: Stop polling on a final status or when the wait expires
+
+    opt JasonUI Task History
+        UI->>API: GET /v1/asphalt-tasks
+        API->>DB: Query the 10 most recent requests
+        API-->>UI: Return history rows and their latest statuses
+    end
+```
+
+Firestore is the source of truth for the displayed status. The UI only talks
+to JasonPython over HTTP. For commands without result tracking, `SUBMITTED`
+means Pub/Sub accepted the request. For Refill, a terminal status comes from
+the worker. If only a local claim survives a worker crash, the worker reports
+`UNKNOWN` on redelivery because the script may have run partially.

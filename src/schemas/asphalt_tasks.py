@@ -1,5 +1,6 @@
 """Request and response models for remote Asphalt tasks."""
 
+from datetime import datetime
 from enum import Enum
 from uuid import UUID
 
@@ -36,6 +37,7 @@ class AsphaltTaskResponse(AsphaltTaskRequest):
 
 class RefillStatus(str, Enum):
     QUEUED = "QUEUED"
+    SUBMITTED = "SUBMITTED"
     RUNNING = "RUNNING"
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
@@ -50,3 +52,8 @@ class RefillResult(BaseModel):
 
 class AsphaltTaskSnapshot(RefillResult):
     type: AsphaltTaskType
+
+
+class AsphaltTaskHistoryEntry(AsphaltTaskSnapshot):
+    requested_at: datetime
+    repeat: int | None = None

@@ -3,7 +3,9 @@ from uuid import UUID
 from firebase_admin import firestore
 from google.cloud.firestore_v1 import Client
 
-from src.schemas.asphalt_tasks import AsphaltTaskSnapshot, AsphaltTaskType, RefillResult, RefillStatus
+from src.schemas.asphalt_tasks import (
+    AsphaltTaskHistoryEntry, AsphaltTaskSnapshot, AsphaltTaskType, RefillResult, RefillStatus,
+)
 
 
 class AsphaltTasks:
@@ -17,6 +19,7 @@ class AsphaltTasks:
         data = {
             "type": task_type.value,
             "status": RefillStatus.QUEUED.value,
+            "created_at": firestore.SERVER_TIMESTAMP,
             "updated_at": firestore.SERVER_TIMESTAMP,
         }
         if repeat is not None:
@@ -48,3 +51,22 @@ class AsphaltTasks:
             })
 
         update(self.client.transaction())
+
+    def recent(self) -> list[AsphaltTaskHistoryEntry]:
+        collection = self.client.collection("asphalt_tasks")
+        documents = list(collection.order_by("created_at", direction="DESCENDING").limit(10).stream())
+        if len(documents) < 10:
+            # Existing refill records predate the created_at field.
+            documents.extend(
+                doc for doc in collection.order_by("updated_at", direction="DESCENDING").limit(20).stream()
+                if "created_at" not in doc.to_dict()
+            )
+        entries = []
+        for doc in documents:
+            data = doc.to_dict()
+            entries.append(AsphaltTaskHistoryEntry(
+                task_id=UUID(doc.id), type=data["type"], status=data["status"],
+                error=data.get("error"), repeat=data.get("repeat"),
+                requested_at=data.get("created_at") or doc.create_time,
+            ))
+        return sorted(entries, key=lambda entry: entry.requested_at, reverse=True)[:10]

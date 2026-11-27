@@ -1,6 +1,7 @@
 import json
 import unittest
 from concurrent.futures import Future
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 from uuid import uuid4
 
@@ -62,6 +63,26 @@ class AsphaltTaskTests(unittest.IsolatedAsyncioTestCase):
         result = tasks.get(task_id)
         self.assertEqual(result.type, AsphaltTaskType.REFILL_ADS)
         self.assertEqual(result.status, RefillStatus.QUEUED)
+
+    def test_recent_tasks_include_legacy_refills_and_sort_by_request_time(self):
+        client = Mock()
+        collection = client.collection.return_value
+        now = datetime.now(timezone.utc)
+        newer = Mock(id=str(uuid4()))
+        newer.to_dict.return_value = {"type": "MUTE", "status": "SUBMITTED", "created_at": now}
+        legacy = Mock(id=str(uuid4()), create_time=now - timedelta(minutes=1))
+        legacy.to_dict.return_value = {"type": "REFILL_ADS", "status": "SUCCEEDED", "repeat": 8}
+        created, updated = Mock(), Mock()
+        collection.order_by.side_effect = [created, updated]
+        created.limit.return_value.stream.return_value = [newer]
+        updated.limit.return_value.stream.return_value = [legacy, newer]
+
+        rows = AsphaltTasks(client).recent()
+
+        self.assertEqual([str(row.task_id) for row in rows], [newer.id, legacy.id])
+        self.assertEqual(rows[0].status, RefillStatus.SUBMITTED)
+        self.assertEqual(rows[1].repeat, 8)
+        created.limit.assert_called_once_with(10)
 
     def test_consumer_acknowledges_only_after_storing_result(self):
         subscriber, tasks = Mock(), Mock()

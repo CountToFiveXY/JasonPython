@@ -12,6 +12,7 @@ from src.infrastructure.clients import get_firestore
 from src.repositories.asphalt_tasks import AsphaltTasks
 from src.schemas.asphalt_tasks import (
     AsphaltTaskRequest,
+    AsphaltTaskHistoryEntry,
     AsphaltTaskResponse,
     AsphaltTaskSnapshot,
 )
@@ -43,6 +44,14 @@ async def publish_task(
         message_id=published.message_id,
         task_id=published.task_id,
     )
+
+
+@router.get("", response_model_exclude_none=True)
+async def recent_tasks(client: Client = Depends(get_firestore)) -> list[AsphaltTaskHistoryEntry]:
+    try:
+        return await asyncio.to_thread(AsphaltTasks(client).recent)
+    except GoogleAPICallError as exc:
+        raise HTTPException(status_code=503, detail="Task history is unavailable.") from exc
 
 
 @router.get("/{task_id}", response_model_exclude_none=True)
