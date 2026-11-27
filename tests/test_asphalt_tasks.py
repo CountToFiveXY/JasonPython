@@ -99,7 +99,7 @@ class AsphaltTaskTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.message_id, "message-123")
         self.assertEqual(
             response.topic,
-            "projects/jasonapp-xm0830/topics/asphalt_legend_topic",
+            "projects/jasonapp-xm0830/topics/asphalt_task_requests",
         )
         topic, data = publisher.calls[0]
         self.assertEqual(topic, response.topic)

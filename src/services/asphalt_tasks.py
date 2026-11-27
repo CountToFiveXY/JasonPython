@@ -12,7 +12,7 @@ from src.schemas.asphalt_tasks import AsphaltTaskType
 from src.repositories.asphalt_tasks import AsphaltTasks
 
 
-ASPHALT_TASKS_TOPIC = "asphalt_legend_topic"
+ASPHALT_TASKS_TOPIC = "asphalt_task_requests"
 PUBLISH_TIMEOUT_SECONDS = 10
 
 
