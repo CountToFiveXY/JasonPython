@@ -37,7 +37,9 @@ The order ID and workflow ID are identical. Search for that ID in the Temporal
 Web UI under `order` at <http://127.0.0.1:8233> to inspect its one-hour timer, Pub/Sub-delivered
 signal, payout operation, completion activity, and final result. After the
 `SUCCESS` signal, the order awaits `PayoutWorkflow` in the `payout` namespace
-via the `payout-nexus` endpoint. Payout sends its own Temporal workflow ID
+via the `payout-nexus` endpoint and passes the order ID. The Nexus handler starts
+the payout with workflow ID `<order_id>_payout` when that field is present.
+Payout sends its own Temporal workflow ID
 with `payout_started` through `order-status-nexus`. The order writes that ID as
 `payout_id` together with `payout_status: PAYOUT_STARTED` in Firestore.
 After the message activity, payout sends `payout_completed` with the same ID.

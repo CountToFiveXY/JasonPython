@@ -72,19 +72,19 @@ class OrderWorkflow:
             return f"Order {request.order_id} timed out waiting for SUCCESS"
 
         info = workflow.info()
-        payout_id = f"order-payout-{info.run_id}"
-        self._expected_payout_id = payout_id
+        payout_request = OrderPayout(
+            name=request.user_id,
+            order_workflow_id=info.workflow_id,
+            order_run_id=info.run_id,
+            order_id=request.order_id,
+        )
+        self._expected_payout_id = payout_request.payout_workflow_id
         payout = workflow.create_nexus_client(
             endpoint=PAYOUT_NEXUS, service=PayoutService
         )
         await payout.execute_operation(
             PayoutService.run_payout,
-            OrderPayout(
-                workflow_id=payout_id,
-                name=request.user_id,
-                order_workflow_id=info.workflow_id,
-                order_run_id=info.run_id,
-            ),
+            payout_request,
             schedule_to_close_timeout=timedelta(minutes=2),
         )
 

@@ -68,12 +68,12 @@ class OrderWorkflowTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(workflow.status, "SUCCESS")
             self.assertEqual(execute_activity.await_count, 1)
             self.assertIsNone(workflow.payout_id)
-            await workflow.payout_completed("order-payout-run-123")
+            await workflow.payout_completed("order-123_payout")
             await workflow.payout_started("unrelated-payout")
-            await workflow.payout_started("order-payout-run-123")
-            self.assertEqual(workflow.payout_id, "order-payout-run-123")
-            await workflow.payout_completed("order-payout-run-123")
-            await workflow.payout_started("order-payout-run-123")
+            await workflow.payout_started("order-123_payout")
+            self.assertEqual(workflow.payout_id, "order-123_payout")
+            await workflow.payout_completed("order-123_payout")
+            await workflow.payout_started("order-123_payout")
             self.assertEqual(workflow.payout_status, PayoutStatus.COMPLETED)
             return "Hello, user-123!"
 
@@ -112,14 +112,22 @@ class OrderWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(create_nexus_client.call_args.kwargs["service"], PayoutService)
         self.assertEqual(
             run_payout.await_args.args,
-            (PayoutService.run_payout, OrderPayout("order-payout-run-123", "user-123", "order-123", "run-123")),
+            (
+                PayoutService.run_payout,
+                OrderPayout(
+                    name="user-123",
+                    order_workflow_id="order-123",
+                    order_run_id="run-123",
+                    order_id="order-123",
+                ),
+            ),
         )
         calls = execute_activity.await_args_list
         self.assertEqual(calls[0].args, (order.create, request))
         self.assertEqual([call.args[0] for call in calls[1:3]], [order.record_payout] * 2)
         self.assertEqual(
             calls[1].kwargs["args"],
-            ["order-123", "orders", "order-payout-run-123", "PAYOUT_STARTED"],
+            ["order-123", "orders", "order-123_payout", "PAYOUT_STARTED"],
         )
         self.assertEqual(calls[2].kwargs["args"][-1], "PAYOUT_COMPLETED")
         self.assertEqual(calls[3].args, (order.complete,))
