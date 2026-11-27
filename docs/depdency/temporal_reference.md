@@ -30,7 +30,7 @@ server does not automatically start the worker.
 curl -X POST http://127.0.0.1:8000/v1/order \
   -H 'Content-Type: application/json' \
   -d '{"user_id":"user-123"}'
-# Create an order and start OrderWorkflow with the order UUID.
+# Write the order document, then start OrderWorkflow with the order UUID.
 ```
 
 The order ID and workflow ID are identical. Search for that ID in the Temporal
@@ -39,13 +39,22 @@ signal, payout operation, completion activity, and final result. After the
 `SUCCESS` signal, the order awaits `PayoutWorkflow` in the `payout` namespace
 via the `payout-nexus` endpoint and passes the order ID. The Nexus handler starts
 the payout with workflow ID `<order_id>_payout` when that field is present.
-Payout sends its own Temporal workflow ID
-with `payout_started` through `order-status-nexus`. The order writes that ID as
-`payout_id` together with `payout_status: PAYOUT_STARTED` in Firestore.
-After the message activity, payout sends `payout_completed` with the same ID.
-The order writes `PAYOUT_COMPLETED` before marking the order complete. If the one-hour signal wait times
-out, the order skips payout. If the payout Nexus operation fails or times
-out after two minutes, the order workflow fails before marking the order complete.
+Before starting the workflow, `payout_service` creates `payouts/{payout_id}`
+with status `INITIATED`. The workflow runs two activities:
+
+1. `payout.start` sets the payout document to `STARTED`, notifies
+   `OrderService`, and prints the existing payout message.
+2. `payout.complete` sets the payout document to `COMPLETED` and notifies
+   `OrderService`.
+
+For each notification, `OrderService` sends `payout_started` or
+`payout_completed` to the order run. After Temporal accepts the signal, the
+service records `payout_id` and the corresponding `payout_status` on the order
+document. The order marks itself complete after payout finishes.
+
+If the one-hour signal wait times out, the order skips payout. If the payout
+Nexus operation fails or times out, the order workflow fails before marking
+the order complete.
 
 ## Configuration
 
@@ -58,7 +67,6 @@ The API, workers, and local launcher share these settings.
 | `TEMPORAL_ORDER_NAMESPACE` | `order` |
 | `TEMPORAL_PAYOUT_NAMESPACE` | `payout` |
 | `PAYOUT_NEXUS` | `payout-nexus` |
-| `ORDER_STATUS_NEXUS` | `order-status-nexus` |
 | `TEMPORAL_TASK_QUEUE` (hello) | `utility-api` |
 | `TEMPORAL_ORDER_TASK_QUEUE` | `order-queue` |
 | `TEMPORAL_PAYOUT_TASK_QUEUE` | `payout-queue` |
@@ -66,18 +74,16 @@ The API, workers, and local launcher share these settings.
 Set the same namespace values across the API, Temporal workers, and Pub/Sub
 subscriber. For a remote Temporal address, provision the configured namespaces
 before starting the application. The local launcher creates them automatically
-for the local server along with both Nexus endpoints. For a remote
-server or manual startup, create both endpoints before starting orders:
+for the local server along with the payout Nexus endpoint. For a remote
+server or manual startup, create the payout endpoint before starting orders:
 
 ```bash
 temporal operator nexus endpoint create --name payout-nexus \
   --target-namespace payout --target-task-queue payout-queue
-temporal operator nexus endpoint create --name order-status-nexus \
-  --target-namespace order --target-task-queue order-queue
 ```
 
-The local launcher updates existing endpoints to match their configured
-namespaces and task queues. For remote or manual setups, update the existing
+The local launcher updates the existing endpoint to match the configured
+payout namespace and task queue. For remote or manual setups, update the existing
 endpoint with the same target flags.
 
 Before deploying, let in-flight order and payout executions finish on their

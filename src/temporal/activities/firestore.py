@@ -21,23 +21,26 @@ class FirestoreDocumentWrite:
     merge: bool = False
 
 
-@activity.defn
-async def write_firestore_document(request: FirestoreDocumentWrite) -> str:
-    """Idempotently write a document so Temporal can safely retry the activity."""
+def firestore_client() -> firestore.Client:
     try:
         firebase_app = firebase_admin.get_app()
     except ValueError:
         firebase_app = firebase_admin.initialize_app(
             options={"projectId": FIREBASE_PROJECT_ID}
         )
+    return firestore.client(app=firebase_app)
 
+
+@activity.defn
+async def write_firestore_document(request: FirestoreDocumentWrite) -> str:
+    """Idempotently write a document so Temporal can safely retry the activity."""
     fields = dict(request.fields)
     for field_name in request.timestamp_fields:
         value = fields.get(field_name)
         if isinstance(value, str):
             fields[field_name] = datetime.fromisoformat(value)
 
-    client = firestore.client(app=firebase_app)
+    client = firestore_client()
     document = client.collection(request.collection).document(request.document_id)
     await asyncio.to_thread(document.set, fields, merge=request.merge)
     return f"Wrote {request.collection}/{request.document_id}"

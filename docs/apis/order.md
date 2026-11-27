@@ -29,10 +29,10 @@ The endpoint responds with HTTP `201 Created`:
 The endpoint constructs the persistent `Order` model defined in
 `src/entity/order.py`. Its HTTP `OrderRequest` and `OrderResponse` contracts are
 defined separately in `src/schemas/order.py`. The router delegates creation to
-`OrderService` in `src/services/order.py`, which constructs the entity and passes
-its serialized fields to Temporal. The workflow
-calls `order.create` to write the `orders/{id}` document with `id`,
-`user_id`, `created`, `expires_at`, and `status` set to `STARTED`. The activity uses an idempotent Firestore write so Temporal can safely retry it. The expiration timestamp is exactly 24 hours after creation, and an
+`OrderService` in `src/services/order.py`. The service creates the
+`orders/{id}` document with `id`, `user_id`, `created`, `expires_at`, and
+`status` set to `STARTED` before starting the Temporal workflow.
+The expiration timestamp is exactly 24 hours after creation, and an
 enabled Firestore TTL policy on `orders.expires_at` deletes expired documents.
 Deletion scheduling is managed entirely by Firestore; no Temporal cleanup
 workflow is started.

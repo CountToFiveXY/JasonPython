@@ -311,8 +311,7 @@ else
 
         configure_nexus_endpoint "${PAYOUT_NEXUS:-payout-nexus}" \
             "${temporal_namespaces[2]}" "${TEMPORAL_PAYOUT_TASK_QUEUE:-payout-queue}"
-        configure_nexus_endpoint "${ORDER_STATUS_NEXUS:-order-status-nexus}" \
-            "${temporal_namespaces[1]}" "${TEMPORAL_ORDER_TASK_QUEUE:-order-queue}"
+
     fi
 
     highlight "Starting Temporal worker..."
