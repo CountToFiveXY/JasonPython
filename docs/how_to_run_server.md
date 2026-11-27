@@ -89,7 +89,7 @@ Leave this terminal open. The script:
 1. Installs missing Homebrew dependencies.
 2. Creates `.venv` and installs Python requirements when needed.
 3. Starts Redis, unless Redis is already running.
-4. Starts Temporal Server, unless it is already running.
+4. Starts or reuses the local Temporal Server and ensures its workflow namespaces exist.
 5. Starts the Python Temporal worker.
 6. Starts the Pub/Sub order success worker.
 7. Starts FastAPI on port 8000, falling back to 8088 and then 8888 when busy.
@@ -166,7 +166,7 @@ configuration commands.
 ### Terminal 2: Temporal Server
 
 ```bash
-temporal server start-dev  # Start Temporal Server and its local Web UI.
+temporal server start-dev --namespace default --namespace order --namespace payout
 ```
 
 ### Terminal 3: Temporal worker

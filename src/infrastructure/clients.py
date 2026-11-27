@@ -18,10 +18,13 @@ from src.infrastructure.scheduler import (
     run_local_scheduler,
 )
 from src.services.file_transfer import FileTransferService, UploadCodeError, read_upload_code
+from src.temporal.config import (
+    TEMPORAL_ADDRESS,
+    TEMPORAL_NAMESPACE,
+    TEMPORAL_ORDER_NAMESPACE,
+)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
-TEMPORAL_ADDRESS = os.getenv("TEMPORAL_ADDRESS", "127.0.0.1:7233")
-TEMPORAL_NAMESPACE = os.getenv("TEMPORAL_NAMESPACE", "default")
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "jasonapp-xm0830")
 # Core mode starts without Temporal, so give it a short chance to connect.
 OPTIONAL_SERVICE_TIMEOUT = float(os.getenv("OPTIONAL_SERVICE_TIMEOUT", "5"))
@@ -32,10 +35,13 @@ START_ALL_HINT = "Click Activate All Services in JasonApp to start it."
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     redis_client = Redis.from_url(REDIS_URL, decode_responses=True)
     await redis_client.ping()
-    temporal_client = await _connect_temporal()
+    temporal_client, order_temporal_client = await asyncio.gather(
+        _connect_temporal(), _connect_temporal(TEMPORAL_ORDER_NAMESPACE)
+    )
     scheduler_controller = LocalSchedulerController()
     app.state.redis = redis_client
     app.state.temporal = temporal_client
+    app.state.order_temporal = order_temporal_client
     app.state.cache_watcher = _start_cache_watcher(app, redis_client)
     app.state.scheduler_controller = scheduler_controller
     app.state.file_transfer = FileTransferService(
@@ -61,17 +67,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await redis_client.aclose()
 
 
-async def _connect_temporal() -> Client | None:
-    """The Temporal client, or None when Temporal is not running."""
+async def _connect_temporal(namespace: str = TEMPORAL_NAMESPACE) -> Client | None:
+    """Connect a namespace client while allowing startup without Temporal."""
 
     try:
         return await asyncio.wait_for(
-            Client.connect(TEMPORAL_ADDRESS, namespace=TEMPORAL_NAMESPACE),
+            Client.connect(TEMPORAL_ADDRESS, namespace=namespace),
             timeout=OPTIONAL_SERVICE_TIMEOUT,
         )
     except Exception as exc:
         print(
-            f"Temporal is not running at {TEMPORAL_ADDRESS} ({exc or type(exc).__name__}); "
+            f"Could not connect to Temporal at {TEMPORAL_ADDRESS} for namespace {namespace} "
+            f"({exc or type(exc).__name__}); "
             "workflow APIs return 503 until it is started.",
             flush=True,
         )
@@ -141,7 +148,14 @@ def get_file_transfer(request: Request) -> FileTransferService:
 
 
 def get_temporal(request: Request) -> Client:
-    temporal = request.app.state.temporal
+    return _require_temporal(request.app.state.temporal)
+
+
+def get_order_temporal(request: Request) -> Client:
+    return _require_temporal(request.app.state.order_temporal)
+
+
+def _require_temporal(temporal: Client | None) -> Client:
     if temporal is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

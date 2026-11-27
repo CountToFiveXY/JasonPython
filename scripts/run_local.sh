@@ -268,13 +268,31 @@ highlight "Redis snapshot: $redis_data_dir/dump.rdb"
 if (( core_only )); then
     highlight "Core mode: skipping Temporal and the Pub/Sub order success worker."
 else
-    if nc -z 127.0.0.1 7233 >/dev/null 2>&1; then
-        highlight "Temporal Server is already running."
-    else
-        highlight "Starting Temporal Server..."
-        temporal server start-dev &
-        temporal_pid=$!
-        wait_for_port 127.0.0.1 7233 "Temporal Server"
+    temporal_address="${TEMPORAL_ADDRESS:-127.0.0.1:7233}"
+    if [[ "$temporal_address" == "127.0.0.1:7233" || "$temporal_address" == "localhost:7233" ]]; then
+        temporal_namespaces=(
+            "${TEMPORAL_NAMESPACE:-default}"
+            "${TEMPORAL_ORDER_NAMESPACE:-order}"
+            "${TEMPORAL_PAYOUT_NAMESPACE:-payout}"
+        )
+        if nc -z 127.0.0.1 7233 >/dev/null 2>&1; then
+            highlight "Temporal Server is already running."
+            for namespace in "${temporal_namespaces[@]}"; do
+                if ! temporal operator namespace describe --address "$temporal_address" \
+                    --namespace "$namespace" >/dev/null 2>&1; then
+                    temporal operator namespace create --address "$temporal_address" \
+                        --namespace "$namespace"
+                fi
+            done
+        else
+            highlight "Starting Temporal Server..."
+            temporal server start-dev \
+                --namespace "${temporal_namespaces[0]}" \
+                --namespace "${temporal_namespaces[1]}" \
+                --namespace "${temporal_namespaces[2]}" &
+            temporal_pid=$!
+            wait_for_port 127.0.0.1 7233 "Temporal Server"
+        fi
     fi
 
     highlight "Starting Temporal worker..."

@@ -10,9 +10,9 @@ from google.cloud.pubsub_v1.subscriber.message import Message
 from pydantic import ValidationError
 from temporalio.client import Client, RPCError, RPCStatusCode
 
-from src.infrastructure.clients import TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE
 from src.messaging.config import ORDER_SUCCESS_SUBSCRIPTION
 from src.messaging.events import OrderMessageEvent
+from src.temporal.config import TEMPORAL_ADDRESS, TEMPORAL_ORDER_NAMESPACE
 from src.temporal.workflows.order import OrderWorkflow
 
 
@@ -50,7 +50,7 @@ async def handle_message(message: Message, temporal_client: Client) -> None:
 
 
 async def main() -> None:
-    temporal_client = await Client.connect(TEMPORAL_ADDRESS, namespace=TEMPORAL_NAMESPACE)
+    temporal_client = await Client.connect(TEMPORAL_ADDRESS, namespace=TEMPORAL_ORDER_NAMESPACE)
     loop = asyncio.get_running_loop()
 
     def callback(message: Message) -> None:
