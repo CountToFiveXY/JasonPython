@@ -18,6 +18,7 @@ class OrderWorkflow:
         self.status: str | None = None
         self.payout_id: str | None = None
         self.payout_status: PayoutStatus | None = None
+        self._expected_payout_id: str | None = None
         self._request: OrderWorkflowInput | None = None
         self._payout_status_lock = asyncio.Lock()
 
@@ -37,9 +38,11 @@ class OrderWorkflow:
     async def _record_payout_status(self, payout_id: str, status: PayoutStatus) -> None:
         async with self._payout_status_lock:
             request = self._request
-            if request is None or payout_id != self.payout_id:
+            if request is None or payout_id != self._expected_payout_id:
                 return
             if self.payout_status in (status, PayoutStatus.COMPLETED):
+                return
+            if status == PayoutStatus.COMPLETED and self.payout_id != payout_id:
                 return
             await workflow.execute_activity(
                 order.record_payout,
@@ -47,6 +50,7 @@ class OrderWorkflow:
                 start_to_close_timeout=timedelta(seconds=30),
                 schedule_to_close_timeout=timedelta(minutes=2),
             )
+            self.payout_id = payout_id
             self.payout_status = status
 
     @workflow.run
@@ -68,20 +72,15 @@ class OrderWorkflow:
             return f"Order {request.order_id} timed out waiting for SUCCESS"
 
         info = workflow.info()
-        self.payout_id = f"order-payout-{info.run_id}"
-        await workflow.execute_activity(
-            order.record_payout,
-            args=[request.order_id, request.collection, self.payout_id],
-            start_to_close_timeout=timedelta(seconds=30),
-        )
-
+        payout_id = f"order-payout-{info.run_id}"
+        self._expected_payout_id = payout_id
         payout = workflow.create_nexus_client(
             endpoint=PAYOUT_NEXUS, service=PayoutService
         )
         await payout.execute_operation(
             PayoutService.run_payout,
             OrderPayout(
-                workflow_id=self.payout_id,
+                workflow_id=payout_id,
                 name=request.user_id,
                 order_workflow_id=info.workflow_id,
                 order_run_id=info.run_id,

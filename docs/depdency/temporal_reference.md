@@ -37,11 +37,11 @@ The order ID and workflow ID are identical. Search for that ID in the Temporal
 Web UI under `order` at <http://127.0.0.1:8233> to inspect its one-hour timer, Pub/Sub-delivered
 signal, payout operation, completion activity, and final result. After the
 `SUCCESS` signal, the order awaits `PayoutWorkflow` in the `payout` namespace
-via the `payout-nexus` endpoint. Before calling Nexus, the order stores
-`payout_id` on its Firestore document. Payout reports `PAYOUT_STARTED` and
-`PAYOUT_COMPLETED` through `order-status-nexus`, with the message activity
-between them. The order persists each signal to the document's `payout_status`
-field before marking the order complete. If the one-hour signal wait times
+via the `payout-nexus` endpoint. Payout sends its own Temporal workflow ID
+with `payout_started` through `order-status-nexus`. The order writes that ID as
+`payout_id` together with `payout_status: PAYOUT_STARTED` in Firestore.
+After the message activity, payout sends `payout_completed` with the same ID.
+The order writes `PAYOUT_COMPLETED` before marking the order complete. If the one-hour signal wait times
 out, the order skips payout. If the payout Nexus operation fails or times
 out after two minutes, the order workflow fails before marking the order complete.
 

@@ -61,14 +61,17 @@ class OrderWorkflowTests(unittest.IsolatedAsyncioTestCase):
     async def test_persists_started_then_completed_after_success(self) -> None:
         workflow = OrderWorkflow()
         execute_activity = AsyncMock(
-            side_effect=[None, None, None, None, "Order order-123 completed"]
+            side_effect=[None, None, None, "Order order-123 completed"]
         )
 
         async def payout_after_success(*args, **kwargs):
             self.assertEqual(workflow.status, "SUCCESS")
-            self.assertEqual(execute_activity.await_count, 2)
+            self.assertEqual(execute_activity.await_count, 1)
+            self.assertIsNone(workflow.payout_id)
+            await workflow.payout_completed("order-payout-run-123")
             await workflow.payout_started("unrelated-payout")
             await workflow.payout_started("order-payout-run-123")
+            self.assertEqual(workflow.payout_id, "order-payout-run-123")
             await workflow.payout_completed("order-payout-run-123")
             await workflow.payout_started("order-payout-run-123")
             self.assertEqual(workflow.payout_status, PayoutStatus.COMPLETED)
@@ -113,12 +116,14 @@ class OrderWorkflowTests(unittest.IsolatedAsyncioTestCase):
         )
         calls = execute_activity.await_args_list
         self.assertEqual(calls[0].args, (order.create, request))
-        self.assertEqual([call.args[0] for call in calls[1:4]], [order.record_payout] * 3)
-        self.assertEqual(calls[1].kwargs["args"], ["order-123", "orders", "order-payout-run-123"])
-        self.assertEqual(calls[2].kwargs["args"][-1], "PAYOUT_STARTED")
-        self.assertEqual(calls[3].kwargs["args"][-1], "PAYOUT_COMPLETED")
-        self.assertEqual(calls[4].args, (order.complete,))
-        self.assertEqual(calls[4].kwargs["args"], ["order-123", "orders"])
+        self.assertEqual([call.args[0] for call in calls[1:3]], [order.record_payout] * 2)
+        self.assertEqual(
+            calls[1].kwargs["args"],
+            ["order-123", "orders", "order-payout-run-123", "PAYOUT_STARTED"],
+        )
+        self.assertEqual(calls[2].kwargs["args"][-1], "PAYOUT_COMPLETED")
+        self.assertEqual(calls[3].args, (order.complete,))
+        self.assertEqual(calls[3].kwargs["args"], ["order-123", "orders"])
 
     async def test_workflow_completes_with_timeout_result_after_one_hour(self) -> None:
         workflow = OrderWorkflow()

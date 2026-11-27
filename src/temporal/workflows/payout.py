@@ -42,7 +42,7 @@ class PayoutWorkflow:
             OrderPayoutStatus(
                 order_workflow_id=request.order_workflow_id,
                 order_run_id=request.order_run_id,
-                payout_id=request.workflow_id,
+                payout_id=workflow.info().workflow_id,
                 status=status,
             ),
             schedule_to_close_timeout=timedelta(seconds=30),
