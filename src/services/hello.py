@@ -1,15 +1,13 @@
 """Hello workflow use case."""
 
-import os
 from dataclasses import dataclass
 from uuid import uuid4
 
 from temporalio.client import Client as TemporalClient
 
+from src.temporal.config import TEMPORAL_TASK_QUEUE
 from src.temporal.workflows.hello import HelloWorkflow
 
-
-TEMPORAL_TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "utility-api")
 
 
 @dataclass(frozen=True)

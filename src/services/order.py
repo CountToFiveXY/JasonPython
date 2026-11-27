@@ -7,10 +7,10 @@ from uuid import uuid4
 from temporalio.client import Client as TemporalClient
 
 from src.entity import Order, OrderStatus
+from src.temporal.config import TEMPORAL_ORDER_TASK_QUEUE
 from src.temporal.workflows.order import OrderWorkflow, OrderWorkflowInput
 
 
-TEMPORAL_TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "utility-api")
 ORDER_COLLECTION = os.getenv("FIRESTORE_ORDER_COLLECTION", "orders")
 
 
@@ -42,6 +42,6 @@ class OrderService:
                 collection=ORDER_COLLECTION,
             ),
             id=order.id,
-            task_queue=TEMPORAL_TASK_QUEUE,
+            task_queue=TEMPORAL_ORDER_TASK_QUEUE,
         )
         return order

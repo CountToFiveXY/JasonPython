@@ -12,6 +12,8 @@ from temporalio.common import WorkflowIDReusePolicy
 class OrderPayout:
     workflow_id: str
     name: str
+    order_workflow_id: str
+    order_run_id: str
 
 
 @service_handler(name="payout_service")
@@ -24,7 +26,7 @@ class PayoutService:
 
         return await context.start_workflow(
             PayoutWorkflow.run,
-            request.name,
+            request,
             id=request.workflow_id,
             id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
             execution_timeout=timedelta(minutes=2),
