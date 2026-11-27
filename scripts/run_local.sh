@@ -170,6 +170,21 @@ select_api_port() {
     exit 1
 }
 
+configure_nexus_endpoint() {
+    local endpoint_name="$1"
+    local target_namespace="$2"
+    local target_queue="$3"
+    local endpoint_command=create
+    if temporal operator nexus endpoint get --address "$temporal_address" \
+        --name "$endpoint_name" >/dev/null 2>&1; then
+        endpoint_command=update
+    fi
+    temporal operator nexus endpoint "$endpoint_command" --address "$temporal_address" \
+        --name "$endpoint_name" \
+        --target-namespace "$target_namespace" \
+        --target-task-queue "$target_queue"
+}
+
 wait_for_port() {
     local host="$1"
     local port="$2"
@@ -294,14 +309,10 @@ else
             wait_for_port 127.0.0.1 7233 "Temporal Server"
         fi
 
-        payout_endpoint="${PAYOUT_NEXUS:-payout-nexus}"
-        if ! temporal operator nexus endpoint get --address "$temporal_address" \
-            --name "$payout_endpoint" >/dev/null 2>&1; then
-            temporal operator nexus endpoint create --address "$temporal_address" \
-                --name "$payout_endpoint" \
-                --target-namespace "${temporal_namespaces[2]}" \
-                --target-task-queue "${TEMPORAL_TASK_QUEUE:-utility-api}"
-        fi
+        configure_nexus_endpoint "${PAYOUT_NEXUS:-payout-nexus}" \
+            "${temporal_namespaces[2]}" "${TEMPORAL_PAYOUT_TASK_QUEUE:-payout-queue}"
+        configure_nexus_endpoint "${ORDER_STATUS_NEXUS:-order-status-nexus}" \
+            "${temporal_namespaces[1]}" "${TEMPORAL_ORDER_TASK_QUEUE:-order-queue}"
     fi
 
     highlight "Starting Temporal worker..."
