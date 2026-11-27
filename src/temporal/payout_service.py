@@ -1,4 +1,4 @@
-"""Expose the payout greeting workflow as an asynchronous Nexus operation."""
+"""Expose the payout workflow as an asynchronous Nexus operation."""
 
 from dataclasses import dataclass
 from datetime import timedelta
@@ -9,16 +9,16 @@ from temporalio.common import WorkflowIDReusePolicy
 
 
 @dataclass
-class OrderGreeting:
+class OrderPayout:
     workflow_id: str
     name: str
 
 
-@service_handler
-class GreetingService:
+@service_handler(name="payout_service")
+class PayoutService:
     @nexus.workflow_run_operation
-    async def greet(
-        self, context: nexus.WorkflowRunOperationContext, request: OrderGreeting
+    async def run_payout(
+        self, context: nexus.WorkflowRunOperationContext, request: OrderPayout
     ) -> nexus.WorkflowHandle[str]:
         from src.temporal.workflows.payout import PayoutWorkflow
 

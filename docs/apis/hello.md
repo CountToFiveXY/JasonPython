@@ -55,4 +55,5 @@ curl -X POST http://127.0.0.1:8000/v1/order \
 The workflow ID is the same as the order ID. The endpoint returns immediately.
 The workflow creates a durable one-hour timer and waits for its `update_status`
 signal. The Pub/Sub worker sends that signal after consuming `{id, status}` with
-`status` equal to `SUCCESS`; the workflow then runs `complete_order` and exits.
+`status` equal to `SUCCESS`. The workflow then awaits payout and runs
+`order.complete` to set the document status to `COMPLETED`.
