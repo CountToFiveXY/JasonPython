@@ -130,6 +130,19 @@ class AsphaltTaskTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(json.loads(data)), 1)
         self.assertEqual(response.repeat, None)
 
+    async def test_tracks_reset_and_close_when_requested(self) -> None:
+        for task_type in ("RESET", "CLOSE_GAME"):
+            with self.subTest(task_type=task_type):
+                publisher = FakePublisher()
+                response = await publish_task(
+                    AsphaltTaskRequest(type=task_type, track_completion=True),
+                    self.service(publisher),
+                )
+
+                self.assertIsNotNone(response.task_id)
+                self.assertEqual(publisher.attributes, [{"task_id": str(response.task_id)}])
+                self.assertEqual(json.loads(publisher.calls[0][1]), {"type": task_type})
+
     async def test_publishes_refill_ads(self) -> None:
         publisher = FakePublisher()
         tasks = Mock()

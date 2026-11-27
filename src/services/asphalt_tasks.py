@@ -46,6 +46,8 @@ class AsphaltTaskService:
         self,
         task_type: AsphaltTaskType,
         repeat: int | None = None,
+        *,
+        track_completion: bool = False,
     ) -> PublishedAsphaltTask:
         payload: dict[str, str | int] = {"type": task_type.value}
         task_id = uuid4()
@@ -67,7 +69,9 @@ class AsphaltTaskService:
         except GoogleAPICallError as exc:
             raise AsphaltTaskPublishError("Could not record the task. The task was not sent.") from exc
 
-        tracked = task_type in (AsphaltTaskType.REFILL_ADS, AsphaltTaskType.START_GAME, AsphaltTaskType.WINDOW)
+        tracked = track_completion or task_type in (
+            AsphaltTaskType.REFILL_ADS, AsphaltTaskType.START_GAME, AsphaltTaskType.WINDOW
+        )
         attributes = {"task_id": str(task_id)} if tracked else {}
         try:
             future = self._publisher.publish(self._topic, data, **attributes)

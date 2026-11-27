@@ -20,8 +20,12 @@ class AsphaltTaskRequest(BaseModel):
     type: AsphaltTaskType
     repeat: int | None = Field(default=None, ge=1, le=99)
 
+    track_completion: bool = Field(default=False, exclude=True)
+
     @model_validator(mode="after")
     def validate_repeat(self) -> "AsphaltTaskRequest":
+        if self.track_completion and self.type not in (AsphaltTaskType.RESET, AsphaltTaskType.CLOSE_GAME):
+            raise ValueError("track_completion is only supported for RESET and CLOSE_GAME")
         if self.type != AsphaltTaskType.REFILL_ADS and self.repeat is not None:
             raise ValueError("repeat is only supported for REFILL_ADS")
         if self.type == AsphaltTaskType.REFILL_ADS and self.repeat is None:

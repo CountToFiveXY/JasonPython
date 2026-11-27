@@ -33,7 +33,9 @@ async def publish_task(
     service: AsphaltTaskService = Depends(get_asphalt_task_service),
 ) -> AsphaltTaskResponse:
     try:
-        published = await service.publish(request.type, request.repeat)
+        published = await service.publish(
+            request.type, request.repeat, track_completion=request.track_completion
+        )
     except AsphaltTaskPublishError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
