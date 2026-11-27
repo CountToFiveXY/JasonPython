@@ -67,7 +67,7 @@ class AsphaltTaskService:
         except GoogleAPICallError as exc:
             raise AsphaltTaskPublishError("Could not record the task. The task was not sent.") from exc
 
-        tracked = task_type == AsphaltTaskType.REFILL_ADS
+        tracked = task_type in (AsphaltTaskType.REFILL_ADS, AsphaltTaskType.START_GAME, AsphaltTaskType.WINDOW)
         attributes = {"task_id": str(task_id)} if tracked else {}
         try:
             future = self._publisher.publish(self._topic, data, **attributes)
@@ -80,7 +80,7 @@ class AsphaltTaskService:
                 await self._save_status(task_id, RefillStatus.UNKNOWN)
             if tracked:
                 raise AsphaltTaskPublishError(
-                    f"Could not confirm whether the refill was queued. Check task {task_id} before retrying."
+                    f"Could not confirm whether the task was queued. Check task {task_id} before retrying."
                 ) from exc
             raise AsphaltTaskPublishError("Could not confirm whether the Asphalt task was queued.") from exc
         except GoogleAPICallError as exc:

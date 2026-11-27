@@ -117,6 +117,8 @@ class AsphaltTaskTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(response.type, AsphaltTaskType.RESET)
+        self.assertIsNone(response.task_id)
+        self.assertEqual(publisher.attributes, [{}])
         self.assertEqual(response.message_id, "message-123")
         self.assertEqual(
             response.topic,
@@ -152,6 +154,8 @@ class AsphaltTaskTests(unittest.IsolatedAsyncioTestCase):
         published = await service.publish(AsphaltTaskType.START_GAME)
 
         self.assertEqual(published.type, AsphaltTaskType.START_GAME)
+        self.assertIsNotNone(published.task_id)
+        self.assertEqual(publisher.attributes, [{"task_id": str(published.task_id)}])
         self.assertEqual(published.repeat, None)
         self.assertEqual(len(publisher.calls), 1)
         self.assertEqual(
@@ -180,6 +184,8 @@ class AsphaltTaskTests(unittest.IsolatedAsyncioTestCase):
         published = await service.publish(AsphaltTaskType.WINDOW)
 
         self.assertEqual(published.type, AsphaltTaskType.WINDOW)
+        self.assertIsNotNone(published.task_id)
+        self.assertEqual(publisher.attributes, [{"task_id": str(published.task_id)}])
         self.assertEqual(published.repeat, None)
         self.assertEqual(len(publisher.calls), 1)
         self.assertEqual(
