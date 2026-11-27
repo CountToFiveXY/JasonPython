@@ -24,14 +24,15 @@ class FirestoreActivityTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with (
-            patch("src.temporal.activities.firestore.firebase_admin.get_app"),
+            patch("src.temporal.activities.firestore.firebase_admin.get_app") as get_app,
             patch(
                 "src.temporal.activities.firestore.firestore.client",
                 return_value=client,
-            ),
+            ) as get_client,
         ):
             result = await write_firestore_document(request)
 
+        get_client.assert_called_once_with(app=get_app.return_value, database_id="workflows")
         client.collection.assert_called_once_with("orders")
         client.collection.return_value.document.assert_called_once_with("order-123")
         written_fields = document.set.call_args.args[0]

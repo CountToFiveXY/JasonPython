@@ -37,7 +37,7 @@ class OrderServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(order.created.tzinfo)
         self.assertEqual(
             (order.expires_at - order.created).total_seconds(),
-            86_400,
+            259_200,
         )
         writes.collection.assert_called_once_with(ORDER_COLLECTION)
         writes.collection.return_value.document.assert_called_once_with(order.id)

@@ -2,7 +2,7 @@
 
 import asyncio
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -12,7 +12,7 @@ from nexusrpc.handler import service_handler
 from temporalio import activity, nexus
 from temporalio.common import WorkflowIDReusePolicy
 
-from src.temporal.activities.firestore import firestore_client
+from src.temporal.activities.firestore import WORKFLOW_DOCUMENT_LIFETIME, firestore_client
 from src.temporal.activities.payout import compose_payout_result
 
 if TYPE_CHECKING:
@@ -43,8 +43,15 @@ def _create_payout_document(request: OrderPayout) -> None:
     payout_id = request.payout_workflow_id
     order_id = request.order_id or request.order_workflow_id
     document = firestore_client().collection("payouts").document(payout_id)
+    created = datetime.now(timezone.utc)
     try:
-        document.create({"id": payout_id, "order_id": order_id, "status": "INITIATED"})
+        document.create({
+            "id": payout_id,
+            "order_id": order_id,
+            "status": "INITIATED",
+            "created": created,
+            "expires_at": created + WORKFLOW_DOCUMENT_LIFETIME,
+        })
     except AlreadyExists:
         fields = document.get().to_dict()
         if fields is None or fields.get("order_id") != order_id:

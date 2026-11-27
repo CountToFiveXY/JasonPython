@@ -1,6 +1,6 @@
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 from typing import Any
 
@@ -10,6 +10,8 @@ from temporalio import activity
 
 
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "jasonapp-xm0830")
+WORKFLOW_DATABASE = "workflows"
+WORKFLOW_DOCUMENT_LIFETIME = timedelta(days=3)
 
 
 @dataclass
@@ -28,7 +30,7 @@ def firestore_client() -> firestore.Client:
         firebase_app = firebase_admin.initialize_app(
             options={"projectId": FIREBASE_PROJECT_ID}
         )
-    return firestore.client(app=firebase_app)
+    return firestore.client(app=firebase_app, database_id=WORKFLOW_DATABASE)
 
 
 @activity.defn

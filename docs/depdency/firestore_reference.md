@@ -1,9 +1,8 @@
 # Firestore Reference
 
-The order workflow writes to the `orders` collection in the `jasonapp-xm0830`
-Firebase project by default through the reusable `write_firestore_document`
-activity. The [Gauntlet API](../apis/gauntlet.md) stores maps, tracks,
-and lap times in the `maps` collection of the same project.
+Orders and payouts use the `orders` and `payouts` collections in the
+`workflows` database of the `jasonapp-xm0830` Firebase project. The
+[Gauntlet API](../apis/gauntlet.md) uses the default database in the same project.
 
 ## Local authentication
 
@@ -29,8 +28,7 @@ account instead of a downloaded key.
 | `FIRESTORE_ORDER_COLLECTION` | `orders` | Collection containing order documents |
 | `FIRESTORE_MAP_COLLECTION` | `maps` | Collection containing Gauntlet maps |
 
-The service account needs permission to create documents in Cloud Firestore.
-Order documents use the `expires_at` timestamp for automatic cleanup. A native
-Firestore TTL policy on the `orders` collection group's `expires_at`
-field is the sole deletion mechanism; Firestore schedules removal after the
-stored expiration time.
+The service account needs read and write access to the `workflows` database.
+New orders and payouts receive an `expires_at` timestamp three days after
+creation. For automatic deletion, configure Firestore TTL on `expires_at`
+for both collection groups in the `workflows` database.

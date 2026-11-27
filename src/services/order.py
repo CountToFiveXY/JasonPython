@@ -9,7 +9,7 @@ from google.cloud import firestore
 from temporalio.client import Client as TemporalClient
 
 from src.entity import Order, OrderStatus
-from src.temporal.activities.firestore import firestore_client
+from src.temporal.activities.firestore import WORKFLOW_DOCUMENT_LIFETIME, firestore_client
 from src.temporal.config import TEMPORAL_ORDER_TASK_QUEUE
 from src.temporal.payout_service import OrderPayout, PayoutStatus
 from src.temporal.workflows.order import OrderWorkflow, OrderWorkflowInput
@@ -51,7 +51,7 @@ class OrderService:
             id=order_id,
             user_id=user_id,
             created=created,
-            expires_at=created + timedelta(days=1),
+            expires_at=created + WORKFLOW_DOCUMENT_LIFETIME,
             status=OrderStatus.STARTED,
         )
 

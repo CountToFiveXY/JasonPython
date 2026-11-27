@@ -20,7 +20,7 @@ The endpoint responds with HTTP `201 Created`:
   "id": "12345678-1234-1234-1234-123456789abc",
   "user_id": "user-123",
   "created": "2026-09-07T18:30:00Z",
-  "expires_at": "2026-09-08T18:30:00Z",
+  "expires_at": "2026-09-10T18:30:00Z",
   "status": "STARTED",
   "workflow_id": "12345678-1234-1234-1234-123456789abc"
 }
@@ -30,10 +30,10 @@ The endpoint constructs the persistent `Order` model defined in
 `src/entity/order.py`. Its HTTP `OrderRequest` and `OrderResponse` contracts are
 defined separately in `src/schemas/order.py`. The router delegates creation to
 `OrderService` in `src/services/order.py`. The service creates the
-`orders/{id}` document with `id`, `user_id`, `created`, `expires_at`, and
+`orders/{id}` document in the `workflows` database with `id`, `user_id`, `created`, `expires_at`, and
 `status` set to `STARTED` before starting the Temporal workflow.
-The expiration timestamp is exactly 24 hours after creation, and an
-enabled Firestore TTL policy on `orders.expires_at` deletes expired documents.
+The expiration timestamp is three days after creation. An enabled Firestore
+TTL policy on `orders.expires_at` in `workflows` deletes expired documents.
 Deletion scheduling is managed entirely by Firestore; no Temporal cleanup
 workflow is started.
 The UUID is used as both the Firestore document ID and Temporal workflow ID.
