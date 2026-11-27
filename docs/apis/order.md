@@ -31,18 +31,16 @@ The endpoint constructs the persistent `Order` model defined in
 defined separately in `src/schemas/order.py`. The router delegates creation to
 `OrderService` in `src/services/order.py`, which constructs the entity and passes
 its serialized fields to Temporal. The workflow
-calls `write_firestore_document` to write the `orders/{id}` document with `id`,
-`user_id`, `created`, `expires_at`, and `status` set to `STARTED`. The generic activity
-uses an idempotent write so Temporal retries are safe and other workflows can
-reuse it. The expiration timestamp is exactly 24 hours after creation, and an
+calls `order.create` to write the `orders/{id}` document with `id`,
+`user_id`, `created`, `expires_at`, and `status` set to `STARTED`. The activity uses an idempotent Firestore write so Temporal can safely retry it. The expiration timestamp is exactly 24 hours after creation, and an
 enabled Firestore TTL policy on `orders.expires_at` deletes expired documents.
 Deletion scheduling is managed entirely by Firestore; no Temporal cleanup
 workflow is started.
 The UUID is used as both the Firestore document ID and Temporal workflow ID.
 The API starts the workflow but does not wait for it to finish. The workflow
 waits for up to one hour for a `SUCCESS` signal. A matching Pub/Sub message causes
-the workflow to run its completion activity, update the persisted status to
-`COMPLETED`, and finish:
+the workflow to await payout via Nexus, then run `order.complete` to update
+the persisted status to `COMPLETED`:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/messages \

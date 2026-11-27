@@ -89,7 +89,7 @@ Leave this terminal open. The script:
 1. Installs missing Homebrew dependencies.
 2. Creates `.venv` and installs Python requirements when needed.
 3. Starts Redis, unless Redis is already running.
-4. Starts or reuses the local Temporal Server and ensures its workflow namespaces and greeting Nexus endpoint exist.
+4. Starts or reuses the local Temporal Server and ensures its workflow namespaces and payout Nexus endpoint exist.
 5. Starts the Python Temporal worker.
 6. Starts the Pub/Sub order success worker.
 7. Starts FastAPI on port 8000, falling back to 8088 and then 8888 when busy.
@@ -169,10 +169,10 @@ configuration commands.
 temporal server start-dev --namespace default --namespace order --namespace payout
 ```
 
-With the Temporal Server running, register the local greeting Nexus endpoint:
+With the Temporal Server running, register the local payout Nexus endpoint:
 
 ```bash
-temporal operator nexus endpoint create --name payout-greeting \
+temporal operator nexus endpoint create --name payout-nexus \
   --target-namespace payout --target-task-queue utility-api
 ```
 

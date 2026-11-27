@@ -1,27 +1,13 @@
 import asyncio
-from dataclasses import dataclass
 from datetime import timedelta
 
 from temporalio import workflow
 
 with workflow.unsafe.imports_passed_through():
-    from src.temporal.activities.firestore import (
-        FirestoreDocumentWrite,
-        write_firestore_document,
-    )
-    from src.temporal.activities.order import complete_order
-    from src.temporal.config import TEMPORAL_GREETING_NEXUS_ENDPOINT
-    from src.temporal.greeting_nexus import GreetingService, OrderGreeting
-
-
-@dataclass
-class OrderWorkflowInput:
-    order_id: str
-    user_id: str
-    created: str
-    expires_at: str
-    collection: str
-    status: str = "STARTED"
+    from src.temporal.activities import order
+    from src.temporal.activities.order import OrderWorkflowInput
+    from src.temporal.config import PAYOUT_NEXUS
+    from src.temporal.payout_service import PayoutService, OrderPayout
 
 
 @workflow.defn
@@ -37,34 +23,10 @@ class OrderWorkflow:
     @workflow.run
     async def run(self, request: OrderWorkflowInput) -> str:
         await workflow.execute_activity(
-            write_firestore_document,
-            FirestoreDocumentWrite(
-                collection=request.collection,
-                document_id=request.order_id,
-                fields={
-                    "id": request.order_id,
-                    "user_id": request.user_id,
-                    "created": request.created,
-                    "expires_at": request.expires_at,
-                    "status": request.status,
-                },
-                timestamp_fields=["created", "expires_at"],
-            ),
+            order.create,
+            request,
             start_to_close_timeout=timedelta(seconds=30),
         )
-
-        if workflow.patched("greet-before-waiting-for-order-success"):
-            greeting = workflow.create_nexus_client(
-                endpoint=TEMPORAL_GREETING_NEXUS_ENDPOINT, service=GreetingService
-            )
-            await greeting.execute_operation(
-                GreetingService.greet,
-                OrderGreeting(
-                    workflow_id=f"order-greeting-{workflow.info().run_id}",
-                    name=request.user_id,
-                ),
-                schedule_to_close_timeout=timedelta(minutes=2),
-            )
 
         try:
             await workflow.wait_condition(
@@ -75,21 +37,20 @@ class OrderWorkflow:
         except asyncio.TimeoutError:
             return f"Order {request.order_id} timed out waiting for SUCCESS"
 
-        result = await workflow.execute_activity(
-            complete_order,
-            request.order_id,
-            start_to_close_timeout=timedelta(seconds=30),
+        payout = workflow.create_nexus_client(
+            endpoint=PAYOUT_NEXUS, service=PayoutService
+        )
+        await payout.execute_operation(
+            PayoutService.run_payout,
+            OrderPayout(
+                workflow_id=f"order-payout-{workflow.info().run_id}",
+                name=request.user_id,
+            ),
+            schedule_to_close_timeout=timedelta(minutes=2),
         )
 
-        await workflow.execute_activity(
-            write_firestore_document,
-            FirestoreDocumentWrite(
-                collection=request.collection,
-                document_id=request.order_id,
-                fields={"status": "COMPLETED"},
-                timestamp_fields=[],
-                merge=True,
-            ),
+        return await workflow.execute_activity(
+            order.complete,
+            args=[request.order_id, request.collection],
             start_to_close_timeout=timedelta(seconds=30),
         )
-        return result
