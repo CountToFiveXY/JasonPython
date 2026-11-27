@@ -42,12 +42,6 @@ class OrderWorkflow:
 
     @workflow.run
     async def run(self, request: OrderWorkflowInput) -> str:
-        await workflow.execute_activity(
-            order.create,
-            request,
-            start_to_close_timeout=timedelta(seconds=30),
-        )
-
         try:
             await workflow.wait_condition(
                 lambda: self.status == "SUCCESS",

@@ -1,8 +1,9 @@
+import asyncio
 from dataclasses import dataclass
 
 from temporalio import activity
 
-from src.temporal.activities.firestore import FirestoreDocumentWrite, write_firestore_document
+from src.temporal.activities.firestore import firestore_client
 
 
 @dataclass
@@ -15,37 +16,11 @@ class OrderWorkflowInput:
     status: str = "STARTED"
 
 
-@activity.defn(name="order.create")
-async def create(request: OrderWorkflowInput) -> None:
-    """Write the initial order document."""
-    await write_firestore_document(
-        FirestoreDocumentWrite(
-            collection=request.collection,
-            document_id=request.order_id,
-            fields={
-                "id": request.order_id,
-                "user_id": request.user_id,
-                "created": request.created,
-                "expires_at": request.expires_at,
-                "status": "STARTED",
-            },
-            timestamp_fields=["created", "expires_at"],
-        )
-    )
-
-
 @activity.defn(name="order.complete")
 async def complete(order_id: str, collection: str) -> str:
     """Set the order status to COMPLETED and return the workflow result."""
-    await write_firestore_document(
-        FirestoreDocumentWrite(
-            collection=collection,
-            document_id=order_id,
-            fields={"status": "COMPLETED"},
-            timestamp_fields=[],
-            merge=True,
-        )
-    )
+    document = firestore_client().collection(collection).document(order_id)
+    await asyncio.to_thread(document.update, {"status": "COMPLETED"})
     result = f"Order {order_id} completed"
     print(result, flush=True)
     return result

@@ -1,5 +1,6 @@
 """Order creation use case."""
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 import os
 from uuid import uuid4
@@ -7,6 +8,7 @@ from uuid import uuid4
 from temporalio.client import Client as TemporalClient
 
 from src.entity import Order, OrderStatus
+from src.temporal.activities.firestore import firestore_client
 from src.temporal.config import TEMPORAL_ORDER_TASK_QUEUE
 from src.temporal.workflows.order import OrderWorkflow, OrderWorkflowInput
 
@@ -29,6 +31,12 @@ class OrderService:
             created=created,
             expires_at=created + timedelta(days=1),
             status=OrderStatus.STARTED,
+        )
+
+        document = firestore_client().collection(ORDER_COLLECTION).document(order.id)
+        await asyncio.to_thread(
+            document.create,
+            order.model_dump() | {"status": order.status.value},
         )
 
         await self._temporal_client.start_workflow(

@@ -30,7 +30,7 @@ server does not automatically start the worker.
 curl -X POST http://127.0.0.1:8000/v1/order \
   -H 'Content-Type: application/json' \
   -d '{"user_id":"user-123"}'
-# Create an order and start OrderWorkflow with the order UUID.
+# Write the order document, then start OrderWorkflow with the order UUID.
 ```
 
 The order ID and workflow ID are identical. Search for that ID in the Temporal

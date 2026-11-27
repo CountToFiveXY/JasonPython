@@ -39,7 +39,7 @@ async def main() -> None:
             order_client,
             task_queue=TEMPORAL_ORDER_TASK_QUEUE,
             workflows=[OrderWorkflow],
-            activities=[order.create, order.complete],
+            activities=[order.complete],
         ),
         Worker(
             payout_client,
