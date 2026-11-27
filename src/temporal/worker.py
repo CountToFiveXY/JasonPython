@@ -15,7 +15,6 @@ from src.temporal.config import (
     TEMPORAL_PAYOUT_TASK_QUEUE,
     TEMPORAL_TASK_QUEUE,
 )
-from src.temporal.order_status_service import OrderStatusService
 from src.temporal.payout_service import PayoutService
 from src.temporal.workflows.payout import PayoutWorkflow
 from src.temporal.workflows.hello import HelloWorkflow
@@ -23,31 +22,33 @@ from src.temporal.workflows.order import OrderWorkflow
 
 
 async def main() -> None:
-    registrations = (
-        (TEMPORAL_NAMESPACE, TEMPORAL_TASK_QUEUE, HelloWorkflow, [print_hello], []),
-        (
-            TEMPORAL_ORDER_NAMESPACE, TEMPORAL_ORDER_TASK_QUEUE,
-            OrderWorkflow, [order.create, order.record_payout, order.complete], [],
+    hello_client, order_client, payout_client = await asyncio.gather(
+        Client.connect(TEMPORAL_ADDRESS, namespace=TEMPORAL_NAMESPACE),
+        Client.connect(TEMPORAL_ADDRESS, namespace=TEMPORAL_ORDER_NAMESPACE),
+        Client.connect(TEMPORAL_ADDRESS, namespace=TEMPORAL_PAYOUT_NAMESPACE),
+    )
+    payout_service = PayoutService(order_client)
+    workers = (
+        Worker(
+            hello_client,
+            task_queue=TEMPORAL_TASK_QUEUE,
+            workflows=[HelloWorkflow],
+            activities=[print_hello],
         ),
-        (
-            TEMPORAL_PAYOUT_NAMESPACE, TEMPORAL_PAYOUT_TASK_QUEUE,
-            PayoutWorkflow, [compose_payout_result], [PayoutService()],
+        Worker(
+            order_client,
+            task_queue=TEMPORAL_ORDER_TASK_QUEUE,
+            workflows=[OrderWorkflow],
+            activities=[order.create, order.complete],
+        ),
+        Worker(
+            payout_client,
+            task_queue=TEMPORAL_PAYOUT_TASK_QUEUE,
+            workflows=[PayoutWorkflow],
+            activities=[compose_payout_result, payout_service.start, payout_service.complete],
+            nexus_service_handlers=[payout_service],
         ),
     )
-    workers = []
-    for namespace, task_queue, workflow_type, activities, nexus_handlers in registrations:
-        client = await Client.connect(TEMPORAL_ADDRESS, namespace=namespace)
-        if workflow_type is OrderWorkflow:
-            nexus_handlers = [OrderStatusService(client)]
-        workers.append(
-            Worker(
-                client,
-                task_queue=task_queue,
-                workflows=[workflow_type],
-                activities=activities,
-                nexus_service_handlers=nexus_handlers,
-            )
-        )
 
     async with asyncio.TaskGroup() as tasks:
         for worker in workers:

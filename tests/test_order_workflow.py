@@ -4,8 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from src.temporal.activities import order
-from src.temporal.order_status_service import PayoutStatus
-from src.temporal.payout_service import PayoutService, OrderPayout
+from src.temporal.payout_service import OrderPayout, PayoutService, PayoutStatus
 from src.temporal.workflows.order import OrderWorkflow, OrderWorkflowInput
 
 
@@ -61,7 +60,7 @@ class OrderWorkflowTests(unittest.IsolatedAsyncioTestCase):
     async def test_persists_started_then_completed_after_success(self) -> None:
         workflow = OrderWorkflow()
         execute_activity = AsyncMock(
-            side_effect=[None, None, None, "Order order-123 completed"]
+            side_effect=[None, "Order order-123 completed"]
         )
 
         async def payout_after_success(*args, **kwargs):
@@ -80,8 +79,6 @@ class OrderWorkflowTests(unittest.IsolatedAsyncioTestCase):
         run_payout = AsyncMock(side_effect=payout_after_success)
 
         async def wait_for_success(condition, **kwargs):
-            if not kwargs:
-                return
             run_payout.assert_not_awaited()
             self.assertFalse(condition())
             await workflow.update_status("SUCCESS")
@@ -124,14 +121,9 @@ class OrderWorkflowTests(unittest.IsolatedAsyncioTestCase):
         )
         calls = execute_activity.await_args_list
         self.assertEqual(calls[0].args, (order.create, request))
-        self.assertEqual([call.args[0] for call in calls[1:3]], [order.record_payout] * 2)
-        self.assertEqual(
-            calls[1].kwargs["args"],
-            ["order-123", "orders", "order-123_payout", "PAYOUT_STARTED"],
-        )
-        self.assertEqual(calls[2].kwargs["args"][-1], "PAYOUT_COMPLETED")
-        self.assertEqual(calls[3].args, (order.complete,))
-        self.assertEqual(calls[3].kwargs["args"], ["order-123", "orders"])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1].args, (order.complete,))
+        self.assertEqual(calls[1].kwargs["args"], ["order-123", "orders"])
 
     async def test_workflow_completes_with_timeout_result_after_one_hour(self) -> None:
         workflow = OrderWorkflow()
