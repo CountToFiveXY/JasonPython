@@ -29,6 +29,7 @@ from src.services import (
     UrlShorteningService,
 )
 from src.services.asphalt_tasks import AsphaltTaskService
+from src.repositories.asphalt_tasks import AsphaltTasks
 
 
 def get_file_transfer_service(
@@ -76,7 +77,7 @@ def get_asphalt_task_service(
 ) -> AsphaltTaskService:
     """Publish to the Pub/Sub project already used by Firestore."""
 
-    return AsphaltTaskService(publisher, firestore_client.project)
+    return AsphaltTaskService(publisher, firestore_client.project, AsphaltTasks(firestore_client))
 
 
 def get_order_service(

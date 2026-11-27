@@ -42,6 +42,19 @@ Refill includes its repeat count in that single message:
 {"type":"REFILL_ADS","repeat":8}
 ```
 
+Refill responses include a `task_id` in addition to the Pub/Sub `message_id`.
+Query `GET /v1/asphalt-tasks/{task_id}` for the task's `type` and status.
+Status can be `QUEUED`, `RUNNING`,
+`SUCCEEDED`, `FAILED`, or `UNKNOWN`. A successful result means the Windows
+script completed its requested runs. Failed or unknown results can include an
+`error` message.
+
+The Windows worker publishes updates to `asphalt_task_results`. JasonPython
+consumes `asphalt_task_results_sub` in both startup modes and saves the status
+in Firestore. The backend account needs subscriber access on that subscription
+and write access to the Firestore collection `asphalt_tasks`. Each document
+stores the task `type`, e.g. `REFILL_ADS`.
+
 Start game uses:
 
 ```json
@@ -74,7 +87,7 @@ publish failure returns `503`.
 Local startup reads `~/.config/jasonapp/service-account.json` through
 `GOOGLE_APPLICATION_CREDENTIALS`. Grant that file's `client_email` the
 `Pub/Sub Publisher` (`roles/pubsub.publisher`) role on
-`asphalt_legend_topic`. Do not grant subscriber access to the backend account.
+`asphalt_legend_topic`. Scope its subscriber access to the result subscription.
 
 The Windows worker should use a separate service account with subscriber
 permission only on its pull subscription.

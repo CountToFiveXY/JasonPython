@@ -1,6 +1,7 @@
 """Request and response models for remote Asphalt tasks."""
 
 from enum import Enum
+from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -30,3 +31,22 @@ class AsphaltTaskRequest(BaseModel):
 class AsphaltTaskResponse(AsphaltTaskRequest):
     topic: str
     message_id: str
+    task_id: UUID | None = None
+
+
+class RefillStatus(str, Enum):
+    QUEUED = "QUEUED"
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    UNKNOWN = "UNKNOWN"
+
+
+class RefillResult(BaseModel):
+    task_id: UUID
+    status: RefillStatus
+    error: str | None = Field(default=None, max_length=500)
+
+
+class AsphaltTaskSnapshot(RefillResult):
+    type: AsphaltTaskType

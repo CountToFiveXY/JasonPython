@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager, suppress
 import firebase_admin
 from fastapi import FastAPI, HTTPException, Request, status
 from firebase_admin import firestore
+from google.api_core.exceptions import GoogleAPICallError
 from google.auth.exceptions import DefaultCredentialsError
 from google.cloud import pubsub_v1, vision
 from google.cloud.firestore_v1 import Client as FirestoreClient
@@ -13,6 +14,8 @@ from redis.asyncio import Redis
 from temporalio.client import Client
 
 from src.infrastructure.gauntlet_cache_watcher import GauntletCacheWatcher
+from src.messaging.refill_results import consume_results
+from src.repositories.asphalt_tasks import AsphaltTasks
 from src.infrastructure.scheduler import (
     LocalSchedulerController,
     run_local_scheduler,
@@ -53,9 +56,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ),
         name="local-scheduler",
     )
+    result_subscriber = None
+    result_stream = None
+    try:
+        firestore_client = getattr(app.state, "firestore", None)
+        if firestore_client is None:
+            firestore_client = _create_firestore_client()
+        result_subscriber = pubsub_v1.SubscriberClient()
+        result_stream = consume_results(result_subscriber, AsphaltTasks(firestore_client))
+    except (DefaultCredentialsError, GoogleAPICallError) as exc:
+        print(f"Refill result consumer unavailable: {exc}", flush=True)
     try:
         yield
     finally:
+        if result_stream is not None:
+            result_stream.cancel()
+            with suppress(Exception):
+                await asyncio.to_thread(result_stream.result, timeout=10)
+        if result_subscriber is not None:
+            result_subscriber.close()
         await asyncio.to_thread(app.state.file_transfer.stop)
         app.state.local_scheduler.cancel()
         await asyncio.gather(app.state.local_scheduler, return_exceptions=True)

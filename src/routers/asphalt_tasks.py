@@ -1,11 +1,19 @@
-"""Endpoints that send one-shot tasks to an Asphalt worker."""
+"""Endpoints that send Asphalt tasks and expose refill status."""
+
+import asyncio
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from google.api_core.exceptions import GoogleAPICallError
+from google.cloud.firestore_v1 import Client
 
 from src.dependencies import get_asphalt_task_service
+from src.infrastructure.clients import get_firestore
+from src.repositories.asphalt_tasks import AsphaltTasks
 from src.schemas.asphalt_tasks import (
     AsphaltTaskRequest,
     AsphaltTaskResponse,
+    AsphaltTaskSnapshot,
 )
 from src.services.asphalt_tasks import AsphaltTaskPublishError, AsphaltTaskService
 
@@ -33,4 +41,18 @@ async def publish_task(
         repeat=published.repeat,
         topic=published.topic,
         message_id=published.message_id,
+        task_id=published.task_id,
     )
+
+
+@router.get("/{task_id}", response_model_exclude_none=True)
+async def refill_status(
+    task_id: UUID, client: Client = Depends(get_firestore)
+) -> AsphaltTaskSnapshot:
+    try:
+        result = await asyncio.to_thread(AsphaltTasks(client).get, task_id)
+    except GoogleAPICallError as exc:
+        raise HTTPException(status_code=503, detail="Refill status is unavailable.") from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Refill task not found.")
+    return result
