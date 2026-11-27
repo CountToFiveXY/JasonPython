@@ -4,16 +4,19 @@ import asyncio
 from dataclasses import dataclass
 from datetime import timedelta
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from google.api_core.exceptions import AlreadyExists
 from google.cloud import firestore
 from nexusrpc.handler import service_handler
 from temporalio import activity, nexus
-from temporalio.client import Client
 from temporalio.common import WorkflowIDReusePolicy
 
 from src.temporal.activities.firestore import firestore_client
 from src.temporal.activities.payout import compose_payout_result
+
+if TYPE_CHECKING:
+    from src.services.order import OrderService
 
 
 @dataclass
@@ -48,37 +51,25 @@ def _create_payout_document(request: OrderPayout) -> None:
             raise ValueError(f"Payout {payout_id} belongs to another order") from None
 
 
-def _persist_payout_status(
-    transaction, order_document, payout_document, payout_id: str, status: PayoutStatus
-) -> None:
-    order_fields = order_document.get(transaction=transaction).to_dict()
+def _persist_payout_status(transaction, payout_document, status: PayoutStatus) -> None:
     payout_fields = payout_document.get(transaction=transaction).to_dict()
-    if order_fields is None or payout_fields is None:
-        raise ValueError(f"Order or payout document missing for {payout_id}")
-    saved_id = order_fields.get("payout_id")
-    if saved_id is not None and saved_id != payout_id:
-        raise ValueError(f"Order belongs to another payout: {saved_id}")
+    if payout_fields is None:
+        raise ValueError(f"Payout {payout_document.id} does not exist")
     if payout_fields.get("status") == PayoutStatus.COMPLETED.name:
         return
     transaction.update(payout_document, {"status": status.name})
-    transaction.update(order_document, {"payout_id": payout_id, "payout_status": status.value})
 
 
-def _write_payout_status(request: OrderPayout, payout_id: str, status: PayoutStatus) -> None:
+def _write_payout_status(payout_id: str, status: PayoutStatus) -> None:
     client = firestore_client()
-    order_document = client.collection(request.order_collection).document(
-        request.order_id or request.order_workflow_id
-    )
-    payout_document = client.collection("payouts").document(payout_id)
-    firestore.transactional(_persist_payout_status)(
-        client.transaction(), order_document, payout_document, payout_id, status
-    )
+    document = client.collection("payouts").document(payout_id)
+    firestore.transactional(_persist_payout_status)(client.transaction(), document, status)
 
 
 @service_handler(name="payout_service")
 class PayoutService:
-    def __init__(self, order_client: Client) -> None:
-        self._order_client = order_client
+    def __init__(self, order_service: "OrderService") -> None:
+        self._order_service = order_service
 
     @nexus.workflow_run_operation
     async def run_payout(
@@ -97,24 +88,14 @@ class PayoutService:
 
     @activity.defn(name="payout.start")
     async def start(self, request: OrderPayout) -> str:
-        await self._signal_payout_status(request, PayoutStatus.STARTED)
+        await self._update_status_and_notify_order(request, PayoutStatus.STARTED)
         return await compose_payout_result(request.name)
 
     @activity.defn(name="payout.complete")
     async def complete(self, request: OrderPayout) -> None:
-        await self._signal_payout_status(request, PayoutStatus.COMPLETED)
+        await self._update_status_and_notify_order(request, PayoutStatus.COMPLETED)
 
-    async def _signal_payout_status(self, request: OrderPayout, status: PayoutStatus) -> None:
-        from src.temporal.workflows.order import OrderWorkflow
-
+    async def _update_status_and_notify_order(self, request: OrderPayout, status: PayoutStatus) -> None:
         payout_id = activity.info().workflow_id
-        await asyncio.to_thread(_write_payout_status, request, payout_id, status)
-        handle = self._order_client.get_workflow_handle(
-            request.order_workflow_id, run_id=request.order_run_id
-        )
-        signal = (
-            OrderWorkflow.payout_started
-            if status == PayoutStatus.STARTED
-            else OrderWorkflow.payout_completed
-        )
-        await handle.signal(signal, payout_id, rpc_timeout=timedelta(seconds=5))
+        await asyncio.to_thread(_write_payout_status, payout_id, status)
+        await self._order_service.receive_payout_status(request, payout_id, status)

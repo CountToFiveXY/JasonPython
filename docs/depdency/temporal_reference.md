@@ -42,12 +42,15 @@ the payout with workflow ID `<order_id>_payout` when that field is present.
 Before starting the workflow, `payout_service` creates `payouts/{payout_id}`
 with status `INITIATED`. The workflow runs two activities:
 
-1. `payout.start` sets the payout document to `STARTED`, writes `payout_id`
-   and `payout_status: PAYOUT_STARTED` to the order document, and signals the
-   order before printing the existing payout message.
-2. `payout.complete` sets the payout document to `COMPLETED`, writes
-   `payout_status: PAYOUT_COMPLETED` to the order, and sends the completion
-   signal. The order then marks itself complete.
+1. `payout.start` sets the payout document to `STARTED`, notifies
+   `OrderService`, and prints the existing payout message.
+2. `payout.complete` sets the payout document to `COMPLETED` and notifies
+   `OrderService`.
+
+For each notification, `OrderService` sends `payout_started` or
+`payout_completed` to the order run. After Temporal accepts the signal, the
+service records `payout_id` and the corresponding `payout_status` on the order
+document. The order marks itself complete after payout finishes.
 
 If the one-hour signal wait times out, the order skips payout. If the payout
 Nexus operation fails or times out, the order workflow fails before marking

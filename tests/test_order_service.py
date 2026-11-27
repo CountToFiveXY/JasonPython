@@ -1,11 +1,12 @@
 import unittest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 from src.services.order import (
     ORDER_COLLECTION,
     OrderService,
 )
 from src.entity import OrderStatus
+from src.temporal.payout_service import OrderPayout, PayoutStatus
 from src.temporal.workflows.order import OrderWorkflow, OrderWorkflowInput
 
 
@@ -71,6 +72,26 @@ class OrderServiceTests(unittest.IsolatedAsyncioTestCase):
                 await OrderService(temporal).create("user-123")
 
         temporal.start_workflow.assert_not_awaited()
+
+
+    async def test_payout_notification_signals_before_updating_order(self) -> None:
+        temporal = Mock()
+        handle = temporal.get_workflow_handle.return_value
+        handle.signal = AsyncMock()
+        request = OrderPayout("user-123", "order-123", "run-123", "order-123")
+
+        def verify_signal_sent(*args):
+            handle.signal.assert_awaited_once_with(
+                OrderWorkflow.payout_started, "order-123_payout", rpc_timeout=ANY
+            )
+
+        with patch("src.services.order._write_order_payout", side_effect=verify_signal_sent) as write:
+            await OrderService(temporal).receive_payout_status(
+                request, "order-123_payout", PayoutStatus.STARTED
+            )
+
+        temporal.get_workflow_handle.assert_called_once_with("order-123", run_id="run-123")
+        write.assert_called_once_with(request, "order-123_payout", PayoutStatus.STARTED)
 
 
 if __name__ == "__main__":

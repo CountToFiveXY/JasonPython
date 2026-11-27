@@ -3,6 +3,7 @@ import asyncio
 from temporalio.client import Client
 from temporalio.worker import Worker
 
+from src.services.order import OrderService
 from src.temporal.activities import order
 from src.temporal.activities.payout import compose_payout_result
 from src.temporal.activities.hello import print_hello
@@ -27,7 +28,7 @@ async def main() -> None:
         Client.connect(TEMPORAL_ADDRESS, namespace=TEMPORAL_ORDER_NAMESPACE),
         Client.connect(TEMPORAL_ADDRESS, namespace=TEMPORAL_PAYOUT_NAMESPACE),
     )
-    payout_service = PayoutService(order_client)
+    payout_service = PayoutService(OrderService(order_client))
     workers = (
         Worker(
             hello_client,
