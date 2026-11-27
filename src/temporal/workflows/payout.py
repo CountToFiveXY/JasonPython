@@ -7,7 +7,7 @@ with workflow.unsafe.imports_passed_through():
 
 
 @workflow.defn
-class GreetingWorkflow:
+class PayoutWorkflow:
     @workflow.run
     async def run(self, name: str) -> str:
         return await workflow.execute_activity(

@@ -293,6 +293,15 @@ else
             temporal_pid=$!
             wait_for_port 127.0.0.1 7233 "Temporal Server"
         fi
+
+        greeting_endpoint="${TEMPORAL_GREETING_NEXUS_ENDPOINT:-payout-greeting}"
+        if ! temporal operator nexus endpoint get --address "$temporal_address" \
+            --name "$greeting_endpoint" >/dev/null 2>&1; then
+            temporal operator nexus endpoint create --address "$temporal_address" \
+                --name "$greeting_endpoint" \
+                --target-namespace "${temporal_namespaces[2]}" \
+                --target-task-queue "${TEMPORAL_TASK_QUEUE:-utility-api}"
+        fi
     fi
 
     highlight "Starting Temporal worker..."
